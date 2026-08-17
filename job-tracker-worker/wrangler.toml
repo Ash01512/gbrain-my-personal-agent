@@ -1,0 +1,15 @@
+name = "job-tracker-worker"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+# No secrets here. wrangler.toml is committed, so all three values are set
+# with `wrangler secret put` (production) or .dev.vars (local):
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+#   API_TOKEN
+#
+# The service-role key bypasses RLS, which is why the Worker requires
+# API_TOKEN on every /api route. See README "Security model".
+
+[observability]
+enabled = true

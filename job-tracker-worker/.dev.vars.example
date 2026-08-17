@@ -1,0 +1,12 @@
+# Copy to .dev.vars for local `wrangler dev`. .dev.vars is gitignored.
+# In production these are set with `wrangler secret put <NAME>` instead.
+
+# Supabase project REST endpoint, no trailing slash.
+SUPABASE_URL="https://YOUR_PROJECT_REF.supabase.co"
+
+# Settings > API > service_role. Bypasses RLS - never ship this to a browser.
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+
+# Shared secret this Worker requires on every /api request.
+# Generate one: openssl rand -hex 32
+API_TOKEN="generate-a-long-random-token"

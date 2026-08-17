@@ -110,13 +110,40 @@ Run `/gstack-upgrade` to update. The `browse` binary lives at
 
 ### Environment notes
 
-This repo runs in Claude Code on the web, where two things differ from a local install:
+This repo runs in Claude Code on the web, where the container is ephemeral: `$HOME` is
+rebuilt every session, so gstack, gbrain, and the browser bridge all have to be
+re-established before the agent can use them. That is what the session bootstrap below
+does. Two quirks it works around:
 
 - **Chromium.** `cdn.playwright.dev` is blocked by the sandbox network policy, so
-  `playwright install` fails. The image ships Chromium at `$PLAYWRIGHT_BROWSERS_PATH`
-  (`/opt/pw-browsers`) as build 1194, while gstack's Playwright pins 1234. Build 1234
-  paths are symlinked to the 1194 binaries so the launch probe passes. Re-apply after a
-  container rebuild if `./setup` fails on the Chromium step.
-- **gbrain is not installed**, so brain-aware blocks are suppressed in the planning
-  skills. Run `/setup-gbrain`, then re-run `./setup` (or `gstack-config gbrain-refresh`)
-  to enable them.
+  `playwright install` always fails. The image ships Chromium at
+  `$PLAYWRIGHT_BROWSERS_PATH` (`/opt/pw-browsers`), but usually at a different revision
+  than gstack's Playwright pins, and the two use different on-disk layouts. The hook
+  reads the pinned revision from `playwright-core/browsers.json` and symlinks the
+  installed build into the paths Playwright expects. gstack's `./setup` runs under
+  `set -e` and aborts the moment its launch probe fails, so the bridge must be applied
+  before setup, not after.
+- **gbrain** is installed by the hook but only configured when `GBRAIN_DATABASE_URL` is
+  present (see below). Without a brain, brain-aware blocks stay suppressed in the
+  planning skills.
+
+## Session bootstrap
+
+`.claude/hooks/session-start.sh` runs on SessionStart (registered in
+`.claude/settings.json`) and restores the toolchain: clone gstack → `bun install` →
+bridge Chromium → `./setup` → install gbrain → `gbrain init` → register the gbrain MCP.
+
+It is idempotent, so each stage is skipped when already satisfied, and it runs only when
+`CLAUDE_CODE_REMOTE=true` — local machines manage their own installs. No stage is fatal:
+a failure degrades that stage and warns, rather than blocking the session from starting.
+
+**To connect the brain, set `GBRAIN_DATABASE_URL`** to the Supabase Session Pooler URL in
+the environment's variables (Claude Code environment settings). It is a credential and is
+never committed to this repo. Without it, gbrain stays installed but unconfigured, which
+is a working fallback.
+
+Test it the way a fresh container would:
+
+```bash
+HOME=$(mktemp -d) CLAUDE_CODE_REMOTE=true ./.claude/hooks/session-start.sh
+```

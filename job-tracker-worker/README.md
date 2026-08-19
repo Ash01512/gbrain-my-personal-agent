@@ -65,22 +65,48 @@ so a bad value returns a 400 naming the field instead of a Postgres error.
 | Duplicate `job_url` (unique index) | 409 |
 | Supabase 5xx or unreachable | 502 |
 
-## Setup
+## Deploy
+
+### Option 1 — from the Cloudflare dashboard, no CLI (recommended)
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create/deploy-to-workers&repository=https://github.com/Ash01512/gbrain-my-personal-agent)
+
+Or connect the repository manually, which is the more reliable route because this
+Worker lives in a subdirectory:
+
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Connect to Git**
+2. Pick `Ash01512/gbrain-my-personal-agent`
+3. Set **root directory** to `job-tracker-worker`
+4. Deploy, then add the three secrets under **Settings → Variables and Secrets**:
+   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`
+
+Every push to the connected branch redeploys. Free plan covers this.
+
+**Not Cloudflare Pages.** Pages has no Cron Triggers, which this project needs for
+the scheduled agent loop, and a Worker already serves the dashboard HTML directly.
+See `docs/designs/job-tracker-agent.md`.
+
+### Option 2 — from the CLI
 
 ```bash
 npm install
-```
-
-Set the three secrets (production):
-
-```bash
+npx wrangler login
 npx wrangler secret put SUPABASE_URL                # https://<ref>.supabase.co
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY   # Settings > API > service_role
 npx wrangler secret put API_TOKEN                   # openssl rand -hex 32
 npx wrangler deploy
 ```
 
-For local development, copy `.dev.vars.example` to `.dev.vars` and fill it in.
+After either route, check `/api/health` — it reports which variables are set
+without revealing their values.
+
+## Local development
+
+```bash
+npm install
+```
+
+Copy `.dev.vars.example` to `.dev.vars` and fill it in.
 `.dev.vars` is gitignored — keep it that way, it holds a key that bypasses RLS.
 
 ```bash

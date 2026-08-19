@@ -197,7 +197,7 @@ adversarial red team and a test-coverage audit. What changed:
 - **The dashboard was laid out as a CRUD tool.** The queue now leads, the match
   rationale is visible text rather than a hover tooltip, apply discloses what it
   does and offers an undo, and the seven-column table becomes cards on a phone.
-- **The test suite never constructed a `Request`.** It does now: 145 tests, with
+- **The test suite never constructed a `Request`.** It does now: 147 tests, with
   the fetch handler, the apply state machine and the client-side helpers covered.
 
 ## What I noticed about how you think

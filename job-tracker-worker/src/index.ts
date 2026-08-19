@@ -279,6 +279,12 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}): 
     status,
     headers: {
       'content-type': 'application/json; charset=utf-8',
+      // Never cached. A stale /api/health is worse than no health check: it
+      // reports a configuration that has since been fixed as still broken,
+      // and the reader has no way to tell. The data endpoints matter too —
+      // the daily count is the product's core claim and must not be served
+      // from a browser cache.
+      'cache-control': 'no-store',
       ...corsHeaders(),
       ...extra,
     },

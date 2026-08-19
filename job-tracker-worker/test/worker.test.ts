@@ -76,6 +76,15 @@ describe('the public surface stays public and everything else stays shut', () =>
     })
   })
 
+  it('is never cached, so a fixed configuration is not reported as broken', async () => {
+    // A cached 503 tells you the secrets are still missing after you have set
+    // them, with nothing to indicate you are reading a stale answer.
+    for (const path of ['/api/health', '/api/applications', '/api/stats/daily']) {
+      const res = await get(path)
+      expect(res.headers.get('cache-control'), `${path} is cacheable`).toBe('no-store')
+    }
+  })
+
   it('reports an unconfigured Worker as unhealthy rather than ok', async () => {
     // ok:true on a Worker that cannot reach anything is the exact failure the
     // endpoint exists to catch.

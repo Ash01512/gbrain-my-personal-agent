@@ -1,0 +1,23 @@
+name = "job-tracker-worker"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+# No secrets here. wrangler.toml is committed, so all three values are set
+# with `wrangler secret put` (production) or .dev.vars (local):
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+#   API_TOKEN
+#
+# APP_TIMEZONE is optional and not a secret, so it can live in [vars] below.
+#
+# The service-role key bypasses RLS, which is why the Worker requires
+# API_TOKEN on every /api route. See README "Security model".
+
+# Which calendar day an application belongs to. Not a secret, so it lives here
+# rather than in `wrangler secret put`. Without it the daily count runs on UTC
+# and rolls over at 04:00 local for a UTC+4 user.
+[vars]
+APP_TIMEZONE = "Asia/Dubai"
+
+[observability]
+enabled = true

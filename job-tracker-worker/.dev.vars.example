@@ -1,0 +1,18 @@
+# Copy to .dev.vars for local `wrangler dev`. .dev.vars is gitignored.
+# In production these are set with `wrangler secret put <NAME>` instead.
+
+# Supabase project REST endpoint, no trailing slash.
+SUPABASE_URL="https://YOUR_PROJECT_REF.supabase.co"
+
+# Settings > API > service_role. Bypasses RLS - never ship this to a browser.
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+
+# Shared secret this Worker requires on every /api request.
+# Generate one: openssl rand -hex 32
+API_TOKEN="generate-a-long-random-token"
+
+# Optional. IANA zone that decides which calendar day an application belongs
+# to. Defaults to UTC, which for a UTC+4 user files anything sent after 20:00
+# local under the next day and resets "sent today" at 04:00 local.
+# An invalid value falls back to UTC silently, so check the spelling.
+APP_TIMEZONE="Asia/Dubai"

@@ -123,9 +123,12 @@ itself distributable — the repo carries its prompt and setup instructions inst
 
 ## Next Steps
 
-1. **Fill the two CV placeholders.** Blocker. The `TECHNICAL PROJECTS` section is
-   filled by this project — a Worker with Supabase, RLS, 145 tests, and a real
-   security decision to explain end to end. Say "deployed" only once it is.
+1. ~~**Fill the two CV placeholders.**~~ DONE — `docs/cv-technical-projects.md`
+   carries both, and every claim in them is checkable against this repository.
+   The `TECHNICAL PROJECTS` entry describes a Worker with Supabase, RLS, 145
+   tests and a real security decision to explain end to end. It still says
+   "committed", not "deployed" — that wording changes only when the smoke test
+   passes against a live URL.
 2. ~~**Migration**~~ DONE — `migrations/0000_init.sql` (baseline plus the
    `job_url` unique index the dedupe depends on), `0001_add_matching.sql`
    (`match_score`, `match_rationale`, `cv_version_id`, 0-10 check, indexes),
@@ -151,8 +154,21 @@ itself distributable — the repo carries its prompt and setup instructions inst
    also answers Open Questions 1 and 2 below. Creating the Routine itself is a
    settings action and is the one step left.
 6. **Seed `cv_versions`** with the real CV so drafts have something to ground in.
-7. **Set `APP_TIMEZONE`** to `Asia/Dubai` on the Worker, or the daily count rolls
-   over at 04:00 local.
+7. ~~**Set `APP_TIMEZONE`**~~ DONE — `Asia/Dubai`, committed to `wrangler.toml`
+   rather than left as a variable to remember. Verified reaching the runtime:
+   an application recorded at 20:xx UTC filed under the following calendar day,
+   which is Dubai's.
+
+### Remaining
+
+- **The three secrets** on the Worker: `SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`. Until they are set, every `/api`
+  route 401s and `/api/health` answers 503 — deliberately, so a half-configured
+  deployment refuses rather than leaks.
+- **The smoke test** against the live URL. That is what turns "committed" into
+  "deployed" in the README, the design doc and the CV, and nothing else does.
+- **The Routine**, per step 5.
+- **Seeding `cv_versions`**, per step 6.
 
 ### Known gap
 

@@ -27,7 +27,7 @@ approval dashboard over a Supabase database. Every command in it runs from
 | Dashboard | Exercised against a live `wrangler dev`, desktop and mobile, light and dark |
 | Product loop | **Verified end to end locally** — see below |
 | Database | **Migrated.** `0002_verify.sql` reports `schema OK` against the live project |
-| Worker | **Not deployed.** Never run against the real Supabase project |
+| Worker | **Built and deployed** from `main` via Cloudflare's Git integration. Secrets not yet set, so it fails closed: `/api` returns 401, `/api/health` returns 503 |
 
 The whole loop has been driven once against a stateful PostgREST stand-in, in
 one pass, through the real Worker: the agent queues three scored candidates, a
@@ -40,6 +40,8 @@ keeps it counted. `applied_on` landed on Dubai's calendar day while UTC was
 still on the previous one, which is `APP_TIMEZONE` doing its job.
 
 The remaining gap is the round trip: every test stubs `fetch`, so nothing yet
-proves the deployed Worker can actually reach PostgREST with real credentials.
-`npm run smoke <url>` is what closes it. Until that passes, this is not
-"deployed" and should not be described as such.
+proves the deployed Worker can reach PostgREST with real credentials. Setting
+the three secrets and running `npm run smoke <url>` — or simply connecting the
+dashboard and seeing the counters populate — is what closes it. Until then the
+CV and the design doc say "committed", not "live", and that wording is
+deliberate.

@@ -32,11 +32,16 @@ Generate a real token: `openssl rand -hex 32`.
 | `GET` | `/` | Dashboard (HTML) |
 | `GET` | `/api/health` | Liveness plus which variables are configured |
 | `GET` | `/api/stats` | Application count, broken down by status |
-| `GET` | `/api/applications` | List. `?status=&company=&q=&limit=&offset=&order=` |
+| `GET` | `/api/stats/daily` | How many applications were sent today, and per day for 14 days |
+| `POST` | `/api/queue` | Agent intake: one scored candidate role |
+| `POST` | `/api/applications/:id/apply` | Record that you sent this one; returns the apply URL |
+| `GET` | `/api/applications` | List. `?queue=true&status=&company=&q=&limit=&offset=&order=` |
 | `POST` | `/api/applications` | Create. `company` and `role` required |
 | `GET` | `/api/applications/:id` | Fetch one |
 | `PATCH` | `/api/applications/:id` | Partial update (`PUT` behaves the same) |
 | `DELETE` | `/api/applications/:id` | Delete |
+
+`?queue=true` is the review list: unsent roles, highest fit score first.
 
 `/api/cv-versions` and `/api/cover-letters` expose the same five verbs over
 `cv_versions` and `cover_letters`.
@@ -44,6 +49,38 @@ Generate a real token: `openssl rand -hex 32`.
 `q` searches company and role together; `company` is a substring match;
 `limit` is clamped to 1–200 and defaults to 50; `order` defaults to
 `created_at.desc`.
+
+## The apply loop
+
+This is the part worth understanding before you trust the numbers.
+
+**No API submits applications on your behalf.** Indeed's connector exposes
+`search_jobs`, `get_job_details`, `get_company_data` and `get_resume` — there is
+no apply endpoint, and its own docs route submission through a human clicking
+the apply link. So the loop is:
+
+1. The matching agent `POST`s scored candidates to `/api/queue`. It cannot mark
+   anything applied — `parseQueueItem` forces `status` to `saved` and strips
+   `applied_on`.
+2. You review the queue, sorted by fit. Hovering a score shows the rationale.
+3. **Apply** opens the real posting in a new tab and records the application.
+   You complete the form there.
+4. `/api/stats/daily` counts what was actually recorded.
+
+Two guards keep the daily number honest:
+
+- **Re-applying is a 409.** Clicking apply twice cannot inflate the count.
+- **Only the apply endpoint may set `applied_on`.** The agent has no path to it.
+
+The count therefore means "applications you sent", not "roles the agent found".
+A tracker that inflates that number is worse than no tracker.
+
+## Database migration
+
+`migrations/0001_add_matching.sql` adds `match_score`, `match_rationale` and
+`cv_version_id`, a 0-10 check constraint, and the two indexes the queue and the
+daily count read. Apply it in the Supabase SQL editor before first use. It is
+safe to re-run.
 
 ### Status values
 
@@ -124,7 +161,7 @@ npm run typecheck
 npm test
 ```
 
-39 tests cover schema validation, route matching, query building, the auth
+56 tests cover schema validation, route matching, query building, the auth
 comparison, and the Supabase error mapping. They stub `fetch`, so they need no
 network and no database.
 

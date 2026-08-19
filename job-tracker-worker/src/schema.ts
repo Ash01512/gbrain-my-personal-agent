@@ -33,6 +33,10 @@ export interface Application {
   contact_name: string | null
   contact_email: string | null
   notes: string | null
+  /** 0-10 fit score written by the matching agent. */
+  match_score: number | null
+  match_rationale: string | null
+  cv_version_id: string | null
   created_at: string
   updated_at: string
 }
@@ -70,6 +74,8 @@ type Rules = {
   strings?: string[]
   booleans?: string[]
   dates?: string[]
+  /** [min, max] inclusive. */
+  numbers?: Record<string, [number, number]>
   enums?: Record<string, readonly string[]>
 }
 
@@ -119,6 +125,14 @@ function validate(
       if (typeof value !== 'string' || !options.includes(value)) {
         throw new ValidationError(`${key} must be one of: ${options.join(', ')}`)
       }
+    } else if (rules.numbers?.[key]) {
+      const [min, max] = rules.numbers[key]
+      if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new ValidationError(`${key} must be a number`)
+      }
+      if (value < min || value > max) {
+        throw new ValidationError(`${key} must be between ${min} and ${max}`)
+      }
     } else if ((rules.booleans ?? []).includes(key)) {
       if (typeof value !== 'boolean') {
         throw new ValidationError(`${key} must be a boolean`)
@@ -155,6 +169,9 @@ const APPLICATION_COLUMNS = [
   'contact_name',
   'contact_email',
   'notes',
+  'match_score',
+  'match_rationale',
+  'cv_version_id',
 ]
 
 const APPLICATION_RULES: Rules = {
@@ -169,8 +186,11 @@ const APPLICATION_RULES: Rules = {
     'contact_name',
     'contact_email',
     'notes',
+    'match_rationale',
+    'cv_version_id',
   ],
   dates: ['applied_on', 'last_contact_on'],
+  numbers: { match_score: [0, 10] },
   enums: { status: APPLICATION_STATUSES },
 }
 
@@ -191,6 +211,29 @@ const COVER_LETTER_RULES: Rules = {
 
 export function parseApplication(body: unknown, partial = false) {
   return validate(body, APPLICATION_COLUMNS, APPLICATION_RULES, { partial })
+}
+
+/**
+ * A candidate role submitted by the matching agent. Stricter than a manual
+ * create: `job_url` is required because it is both the dedupe key (unique
+ * index) and the link the human clicks to actually apply, and a scored
+ * candidate with no rationale is not reviewable.
+ */
+export function parseQueueItem(body: unknown): Record<string, unknown> {
+  const values = validate(
+    body,
+    APPLICATION_COLUMNS,
+    {
+      ...APPLICATION_RULES,
+      required: ['company', 'role', 'job_url', 'match_score', 'match_rationale'],
+    },
+    { partial: false },
+  )
+  // The agent queues candidates; it never marks them applied. Only the
+  // apply endpoint may do that, and only when a human triggers it.
+  values.status = 'saved'
+  delete values.applied_on
+  return values
 }
 
 export function parseCvVersion(body: unknown, partial = false) {

@@ -1,5 +1,5 @@
 import { isAuthorized } from './auth'
-import { listOptionsFromSearch, matchRoute, type Match } from './router'
+import { listOptionsFromSearch, matchRoute, tallyDaily, type Match } from './router'
 import {
   APPLICATION_STATUSES,
   ValidationError,
@@ -7,6 +7,7 @@ import {
   parseApplication,
   parseCoverLetter,
   parseCvVersion,
+  parseQueueItem,
   type Application,
 } from './schema'
 import { Supabase, SupabaseError } from './supabase'
@@ -95,8 +96,51 @@ async function handle(
     return json({ total: rows.length, by_status: byStatus })
   }
 
+  if (match.name === 'daily') {
+    const rows = await db.list<Pick<Application, 'applied_on'>>('applications', {
+      select: 'applied_on',
+      filters: { applied_on: 'not.is.null' },
+      order: 'applied_on.desc',
+      limit: 1000,
+    })
+    const today = new Date().toISOString().slice(0, 10)
+    const series = tallyDaily(rows, today)
+    return json({
+      today: series[0]?.count ?? 0,
+      total: rows.length,
+      days: series,
+    })
+  }
+
   const table = match.table!
   const parse = PARSERS[table]
+
+  if (match.name === 'queue') {
+    // Duplicate job_url hits the unique index and surfaces as 409, so a
+    // re-run of the agent cannot queue the same role twice.
+    const values = parseQueueItem(await request.json())
+    return json({ data: await db.insert(table, values) }, 201)
+  }
+
+  if (match.name === 'apply') {
+    const id = assertUuid(match.id!)
+    const current = await db.getById<Application>(table, id)
+    if (!current) return json({ error: 'not found' }, 404)
+    // Refuse to re-apply. Without this the daily count would inflate every
+    // time the button was clicked twice, and the number has to be true.
+    if (current.status !== 'saved') {
+      return json(
+        { error: `already ${current.status}`, applied_on: current.applied_on },
+        409,
+      )
+    }
+    const row = await db.update<Application>(table, id, {
+      status: 'applied',
+      applied_on: new Date().toISOString().slice(0, 10),
+    })
+    // The apply link is what the human opens. Submission is their action.
+    return json({ data: row, apply_url: current.job_url })
+  }
 
   switch (match.name) {
     case 'list': {

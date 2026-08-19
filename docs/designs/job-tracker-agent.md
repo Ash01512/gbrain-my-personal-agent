@@ -119,8 +119,8 @@ itself distributable — the repo carries its prompt and setup instructions inst
 ## Next Steps
 
 1. **Fill the two CV placeholders.** Blocker. The `TECHNICAL PROJECTS` section is
-   filled by this project — a deployed Worker with Supabase, RLS, 39 tests, and a
-   real security decision to explain end to end.
+   filled by this project — a Worker with Supabase, RLS, 56 tests, and a real
+   security decision to explain end to end. Say "deployed" only once it is.
 2. **Migration:** add `match_score`, `match_rationale`, and `cv_version_id` to
    `applications`. Queued roles use the existing `saved` status, so the CHECK
    constraint does not change.

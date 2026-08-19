@@ -111,13 +111,17 @@ export function dashboardHtml(): string {
         <option value="">All statuses</option>
         ${STATUSES.map((s) => `<option value="${s}">${s}</option>`).join('')}
       </select>
+      <label class="row" style="gap:5px">
+        <input type="checkbox" id="queue" checked style="min-width:auto">
+        review queue, best fit first
+      </label>
       <button id="refresh">Refresh</button>
     </div>
     <div class="scroll">
       <table>
         <thead><tr>
-          <th>Company</th><th>Role</th><th>Status</th><th>Location</th>
-          <th>Applied</th><th>Link</th><th></th>
+          <th>Fit</th><th>Company</th><th>Role</th><th>Status</th><th>Location</th>
+          <th>Applied</th><th></th>
         </tr></thead>
         <tbody id="rows"><tr><td colspan="7" class="muted">Connect to load.</td></tr></tbody>
       </table>
@@ -158,20 +162,32 @@ function esc(value) {
 }
 
 async function loadStats() {
-  const { total, by_status } = await api('/stats');
+  const [{ total, by_status }, daily] = await Promise.all([api('/stats'), api('/stats/daily')]);
+  const spark = daily.days.slice(0, 7).reverse()
+    .map((d) => d.date.slice(5) + ' ' + d.count).join('  ·  ');
   $('stats').innerHTML =
-    '<span class="chip">total <b>' + total + '</b></span>' +
-    STATUSES.map((s) => '<span class="chip">' + s + ' <b>' + (by_status[s] || 0) + '</b></span>').join('');
+    '<span class="chip">applied today <b>' + daily.today + '</b></span>' +
+    '<span class="chip">applied total <b>' + daily.total + '</b></span>' +
+    '<span class="chip">tracked <b>' + total + '</b></span>' +
+    STATUSES.map((s) => '<span class="chip">' + s + ' <b>' + (by_status[s] || 0) + '</b></span>').join('') +
+    '<div class="muted" style="width:100%;font-size:12px;margin-top:6px">last 7 days &nbsp; ' + esc(spark) + '</div>';
+}
+
+function scoreCell(score) {
+  if (score === null || score === undefined) return '<span class="muted">-</span>';
+  return '<b>' + Number(score).toFixed(1) + '</b>';
 }
 
 async function loadRows() {
   const params = new URLSearchParams();
   if ($('q').value.trim()) params.set('q', $('q').value.trim());
   if ($('filter').value) params.set('status', $('filter').value);
+  if ($('queue').checked) params.set('queue', 'true');
   const { data } = await api('/applications?' + params.toString());
 
   $('rows').innerHTML = data.length
     ? data.map((r) => \`<tr>
+        <td title="\${esc(r.match_rationale) || ''}">\${scoreCell(r.match_score)}</td>
         <td>\${esc(r.company)}</td>
         <td>\${esc(r.role)}</td>
         <td><select data-id="\${r.id}" class="status">\${STATUSES.map((s) =>
@@ -179,10 +195,14 @@ async function loadRows() {
         ).join('')}</select></td>
         <td>\${esc(r.location) || '<span class="muted">-</span>'}</td>
         <td>\${esc(r.applied_on) || '<span class="muted">-</span>'}</td>
-        <td>\${r.job_url ? '<a href="' + esc(r.job_url) + '" target="_blank" rel="noopener">open</a>' : '<span class="muted">-</span>'}</td>
-        <td><button class="link" data-del="\${r.id}">delete</button></td>
+        <td class="row" style="gap:6px">
+          \${r.status === 'saved' && r.job_url
+            ? '<button class="primary" data-apply="' + r.id + '" data-url="' + esc(r.job_url) + '">apply</button>'
+            : (r.job_url ? '<a href="' + esc(r.job_url) + '" target="_blank" rel="noopener">open</a>' : '')}
+          <button class="link" data-del="\${r.id}">delete</button>
+        </td>
       </tr>\`).join('')
-    : '<tr><td colspan="7" class="muted">No applications yet.</td></tr>';
+    : '<tr><td colspan="7" class="muted">Nothing in the queue.</td></tr>';
 }
 
 async function refresh() {
@@ -204,6 +224,7 @@ $('save-token').onclick = () => {
 $('refresh').onclick = refresh;
 $('q').onkeydown = (e) => { if (e.key === 'Enter') refresh(); };
 $('filter').onchange = refresh;
+$('queue').onchange = refresh;
 
 $('add').onsubmit = async (e) => {
   e.preventDefault();
@@ -232,6 +253,19 @@ document.addEventListener('change', async (e) => {
 });
 
 document.addEventListener('click', async (e) => {
+  const applyId = e.target.dataset?.apply;
+  if (applyId) {
+    // Opened synchronously inside the click so the popup blocker allows it.
+    // You submit the application yourself in that tab; this only records it.
+    window.open(e.target.dataset.url, '_blank', 'noopener');
+    try {
+      await api('/applications/' + applyId + '/apply', { method: 'POST' });
+      say('Recorded as applied. Finish the form in the tab that just opened.', 'ok');
+      refresh();
+    } catch (err) { say(err.message, 'err'); }
+    return;
+  }
+
   const id = e.target.dataset?.del;
   if (!id || !confirm('Delete this application?')) return;
   try {

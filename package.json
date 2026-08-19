@@ -1,0 +1,14 @@
+{
+  "name": "gbrain-my-personal-agent",
+  "private": true,
+  "description": "Repository root. Exists so Cloudflare's Git integration can install wrangler and deploy with its default settings — the Worker itself lives in job-tracker-worker/.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.123.0"
+  }
+}

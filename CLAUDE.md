@@ -1,6 +1,13 @@
-# gbrain-my-personal-agent
+# job-tracker-agent
 
-Personal agent workspace.
+An agent that finds relevant roles, scores them against a CV, drafts tailored
+cover letters, and queues them for human approval. The human presses submit.
+
+- `job-tracker-worker/` — Cloudflare Worker: JSON API and approval dashboard
+  over the `job-tracker` Supabase database.
+- `docs/designs/job-tracker-agent.md` — approved design, including why the
+  agent loop runs as a scheduled Claude session rather than in the Worker.
+- The rest of this file documents the agent tooling the workspace runs on.
 
 ## gstack
 

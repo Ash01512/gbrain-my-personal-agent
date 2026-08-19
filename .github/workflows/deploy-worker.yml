@@ -1,0 +1,48 @@
+name: Deploy Worker
+
+# Publishes job-tracker-worker to Cloudflare on every push to main that touches
+# it. Requires one repository secret: CLOUDFLARE_API_TOKEN (Workers Scripts:
+# Edit). The three runtime secrets — SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+# API_TOKEN — are set once on the Worker itself and are NOT needed here; a
+# deploy does not overwrite them.
+
+on:
+  push:
+    branches: [main]
+    paths: ['job-tracker-worker/**', '.github/workflows/deploy-worker.yml']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: job-tracker-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: job-tracker-worker/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  deploy:
+    # Never publish a broken Worker: deploy only after typecheck and tests pass.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: job-tracker-worker/package-lock.json
+      - run: npm ci
+        working-directory: job-tracker-worker
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: job-tracker-worker

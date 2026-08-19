@@ -21,7 +21,7 @@ Every claim below is checkable against the repository. Nothing is aspirational.
   the database exposed to anyone who finds the URL.
 - Stack: TypeScript, Cloudflare Workers, Supabase (Postgres, PostgREST), Vitest.
   39 tests, no network required.
-- https://github.com/Ash01512/gbrain-my-personal-agent
+- https://github.com/Ash01512/job-tracker-agent
 
 ---
 

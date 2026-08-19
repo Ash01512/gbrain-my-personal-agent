@@ -69,13 +69,13 @@ so a bad value returns a 400 naming the field instead of a Postgres error.
 
 ### Option 1 — from the Cloudflare dashboard, no CLI (recommended)
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create/deploy-to-workers&repository=https://github.com/Ash01512/gbrain-my-personal-agent)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create/deploy-to-workers&repository=https://github.com/Ash01512/job-tracker-agent)
 
 Or connect the repository manually, which is the more reliable route because this
 Worker lives in a subdirectory:
 
 1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Connect to Git**
-2. Pick `Ash01512/gbrain-my-personal-agent`
+2. Pick `Ash01512/job-tracker-agent`
 3. Set **root directory** to `job-tracker-worker`
 4. Deploy, then add the three secrets under **Settings → Variables and Secrets**:
    `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`

@@ -25,8 +25,19 @@ approval dashboard over a Supabase database. Every command in it runs from
 | --- | --- |
 | Code | Committed, typechecked, 140 tests green in CI |
 | Dashboard | Exercised against a live `wrangler dev`, desktop and mobile, light and dark |
+| Product loop | **Verified end to end locally** — see below |
 | Database | **Migrated.** `0002_verify.sql` reports `schema OK` against the live project |
 | Worker | **Not deployed.** Never run against the real Supabase project |
+
+The whole loop has been driven once against a stateful PostgREST stand-in, in
+one pass, through the real Worker: the agent queues three scored candidates, a
+re-run of the same role returns 409 rather than duplicating, an agent trying to
+send `status: applied` has it stripped to `saved`, the human applies and the
+daily count goes 0 → 1, a second click returns 409 and the count holds, a
+revert to `saved` clears the date and the count returns to 0, re-applying dates
+it today rather than resurrecting the old date, and moving on to `screening`
+keeps it counted. `applied_on` landed on Dubai's calendar day while UTC was
+still on the previous one, which is `APP_TIMEZONE` doing its job.
 
 The remaining gap is the round trip: every test stubs `fetch`, so nothing yet
 proves the deployed Worker can actually reach PostgREST with real credentials.

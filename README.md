@@ -23,7 +23,7 @@ approval dashboard over a Supabase database. Every command in it runs from
 
 | | |
 | --- | --- |
-| Code | Committed, typechecked, 125 tests green in CI |
+| Code | Committed, typechecked, 130 tests green in CI |
 | Dashboard | Exercised against a live `wrangler dev`, desktop and mobile, light and dark |
 | Database | **Migrated.** `0002_verify.sql` reports `schema OK` against the live project |
 | Worker | **Not deployed.** Never run against the real Supabase project |

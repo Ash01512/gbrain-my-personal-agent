@@ -26,7 +26,7 @@ Then, in order:
 
 ```bash
 SUPABASE_DB_URL='postgresql://...' npm run migrate   # 1. schema
-npm run check                                        # 2. typecheck + 125 tests
+npm run check                                        # 2. typecheck + 130 tests
 npm run dev                                          # 3. http://localhost:8787
 npm run deploy                                       # 4. production + smoke test
 ```
@@ -44,17 +44,18 @@ npm run deploy                                       # 4. production + smoke tes
    re-queues every role on every run.
 2. **`npm run deploy`** runs the checks, authenticates with Cloudflare if
    needed, deploys, pushes the three secrets from `.dev.vars` on stdin so no
-   value reaches your shell history, **redeploys** so the new secrets apply to
-   the running version, and then smoke-tests what it just published. It stops
-   before deploying if `.dev.vars` still holds placeholders.
+   value reaches your shell history, then smoke-tests what it just published.
+   It stops before deploying if `.dev.vars` still holds placeholders.
 3. **`npm run smoke <url>`** on its own re-runs just the verification: config,
    the auth boundary, a real PostgREST round trip, and the two endpoints that
    fail loudly if a migration was missed. Needs `API_TOKEN` in the environment.
 
 The dashboard's own flow: open it, paste the API token, press Connect.
 
-Everything to do with the scheduled agent that fills the queue lives in
-`docs/designs/job-tracker-agent.md`, one directory up.
+The scheduled agent that fills the queue is specified in `docs/agent-loop.md` —
+search tracks, the 0–10 scoring rubric, and the run prompt. Why it runs as a
+Claude session rather than inside this Worker is in
+`docs/designs/job-tracker-agent.md`. Both are one directory up.
 
 ## Security model
 
@@ -122,7 +123,9 @@ the apply link. So the loop is:
 1. The matching agent `POST`s scored candidates to `/api/queue`. It cannot mark
    anything applied — `parseQueueItem` forces `status` to `saved` and strips
    `applied_on`.
-2. You review the queue, sorted by fit. Hovering a score shows the rationale.
+2. You review the queue, sorted by fit. The score carries its tier and scale,
+   and the rationale is visible under the role — not a hover tooltip, which does
+   not exist on a phone.
 3. **Apply** opens the real posting in a new tab and records the application.
    You complete the form there.
 4. `/api/stats/daily` counts what was actually recorded.
@@ -225,8 +228,10 @@ a repository that is in fact deploying fine.
    `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`. Add `APP_TIMEZONE` as a plain
    **Text** variable — it is not a secret, and without it the daily count rolls
    over at 04:00 local for a UTC+4 user
-5. Redeploy so the new secrets are picked up — variables added after a deploy do
-   not apply to the running version
+5. Confirm the variables are live rather than staged. The dashboard may hold
+   changes behind a **Deploy** button depending on the UI version, so do not
+   assume — `/api/health` is the definitive answer: it returns 503 while any of
+   the three is missing and 200 once all are set
 
 Every push to the connected branch redeploys. Free plan covers this.
 
@@ -248,7 +253,8 @@ npm run deploy
 ```
 
 It opens a browser once for `wrangler login`, then needs nothing else: checks,
-deploy, secrets from `.dev.vars`, redeploy, smoke test. Use it *instead of* the
+deploy, secrets from `.dev.vars`, smoke test. No redeploy step — each
+`wrangler secret put` creates and deploys a new version by itself. Use it *instead of* the
 dashboard route above for the first deploy, not as well — either creates the
 Worker, and a Worker created by `wrangler deploy` has no Git connection, so
 pushes will not redeploy it until you connect one.
@@ -260,9 +266,7 @@ npx wrangler login                                  # interactive, opens a brows
 npx wrangler secret put SUPABASE_URL                # https://<ref>.supabase.co
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY   # Settings > API > service_role
 npx wrangler secret put API_TOKEN                   # openssl rand -hex 32
-npx wrangler deploy                                 # again — secrets set after a
-                                                    # deploy do not reach the
-                                                    # running version
+npx wrangler deploy
 ```
 
 `APP_TIMEZONE` is not a secret — uncomment the `[vars]` block in `wrangler.toml`
@@ -319,7 +323,7 @@ npm run typecheck
 npm test
 ```
 
-121 tests. Most cover the pure helpers — schema validation, route matching,
+130 tests. Most cover the pure helpers — schema validation, route matching,
 query building, the auth comparison, the Supabase error mapping — and
 `test/worker.test.ts` drives the fetch handler itself, which is where the auth
 gate, the error mapping and the `applied_on` rules actually compose.

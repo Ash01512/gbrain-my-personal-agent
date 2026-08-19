@@ -52,16 +52,18 @@ read_var() {
     head -n1 | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
 }
 
-missing=()
+# A plain string, not an array: macOS still ships bash 3.2, where expanding an
+# empty array under `set -u` is an unbound-variable error.
+missing=""
 for name in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY API_TOKEN; do
   value=$(read_var "$name")
   case "$value" in
     ''|*YOUR_PROJECT_REF*|your-service-role-key|generate-a-long-random-token)
-      missing+=("$name") ;;
+      missing="${missing:+$missing }$name" ;;
   esac
 done
-if [ ${#missing[@]} -gt 0 ]; then
-  echo "    !! still placeholder or empty in .dev.vars: ${missing[*]}" >&2
+if [ -n "$missing" ]; then
+  echo "    !! still placeholder or empty in .dev.vars: $missing" >&2
   echo "       Deploying with these would produce a Worker that 401s or 503s" >&2
   echo "       on every request." >&2
   exit 1
@@ -91,9 +93,16 @@ WORKER_URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' "$deploy_log" | tai
 
 echo
 echo "==> Setting secrets"
-# Order matters only in that the Worker is reachable before they land; it
-# fails closed in the gap, refusing every /api request rather than serving the
-# database. Piped on stdin so no value is ever an argv entry.
+# After the deploy, because `wrangler secret put` needs the Worker to exist.
+# In the gap it fails closed — every /api route 401s rather than serving the
+# database — so the ordering is safe.
+#
+# Each `secret put` creates and deploys a new version by itself, so no redeploy
+# follows. (If you ever move to gradual deployments, that stops being true:
+# `wrangler versions secret put` only stages a version, and it needs a
+# `wrangler versions deploy` after it.)
+#
+# Piped on stdin so no value is ever an argv entry or a history line.
 for name in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY API_TOKEN; do
   printf '%s' "$(read_var "$name")" | $WRANGLER secret put "$name" >/dev/null
   echo "    $name set"
@@ -107,13 +116,6 @@ if ! grep -qE '^\s*APP_TIMEZONE\s*=' wrangler.toml; then
   echo "          uses UTC. For a UTC+4 user that rolls the day over at 04:00"
   echo "          local. Uncomment the [vars] block and re-run."
 fi
-
-echo
-echo "==> Redeploying so the new secrets apply"
-# Secrets added after a deploy do not reach the running version. This is the
-# step that is easy to forget and looks exactly like a broken deployment.
-$WRANGLER deploy >/dev/null
-echo "    done"
 
 if [ -n "$WORKER_URL" ]; then
   echo

@@ -20,8 +20,14 @@ approval dashboard over a Supabase database. Every command in it runs from
 
 ## Status
 
-The Worker is committed, typechecked and covered by 125 tests, and the
-dashboard has been exercised against a live `wrangler dev`. It has **not** been
-run against the real Supabase project — that needs the service-role key. Run
-the migrations and the smoke test in the Worker README before trusting it, and
-do not describe it as deployed until it answers on a real URL.
+| | |
+| --- | --- |
+| Code | Committed, typechecked, 125 tests green in CI |
+| Dashboard | Exercised against a live `wrangler dev`, desktop and mobile, light and dark |
+| Database | **Migrated.** `0002_verify.sql` reports `schema OK` against the live project |
+| Worker | **Not deployed.** Never run against the real Supabase project |
+
+The remaining gap is the round trip: every test stubs `fetch`, so nothing yet
+proves the deployed Worker can actually reach PostgREST with real credentials.
+`npm run smoke <url>` is what closes it. Until that passes, this is not
+"deployed" and should not be described as such.

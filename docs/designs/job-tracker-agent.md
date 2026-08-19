@@ -130,9 +130,12 @@ itself distributable — the repo carries its prompt and setup instructions inst
    match — `create table if not exists` repairs no drift, so the baseline
    landing cleanly is not evidence that it matches).
    Queued roles reuse the `saved` status, so the CHECK constraint is unchanged.
-   **Run all three in the Supabase SQL editor before first use**, and read the
-   header of `0000` first: enabling RLS is a one-way change that makes the anon
-   key read zero rows without returning an error.
+   **Applied to the live project on 2026-08-19**, and `0002_verify.sql` reports
+   `schema OK` against it: every column and type the Worker reads, the unique
+   index, the status CHECK, RLS on all three tables, no duplicate `job_url`
+   values. A fresh database still needs all three, in order, and the header of
+   `0000` read first — enabling RLS is one-way and makes the anon key read zero
+   rows without returning an error.
 3. ~~**Worker**~~ DONE — `POST /api/queue` (agent intake, scored candidate),
    `POST /api/applications/:id/apply` (records the send, returns the apply URL),
    `GET /api/stats/daily` (per-day counts). Named `apply`, not `approve`.

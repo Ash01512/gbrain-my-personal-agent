@@ -75,7 +75,9 @@ awkward.
 
 **Approach A.** It is the only design where the connectors that already exist are
 reachable by the thing doing the work. It also adds the least: the Worker needs two
-new endpoints and one migration, and everything else is already deployed and tested.
+new endpoints and one migration, and everything else is already written and unit
+tested. (Unit tested, not deployed — the Worker has never run against the live
+Supabase project. See "Not yet verified" in `job-tracker-worker/README.md`.)
 
 Division of labour:
 
@@ -122,10 +124,15 @@ itself distributable — the repo carries its prompt and setup instructions inst
    filled by this project — a Worker with Supabase, RLS, 66 tests, and a real
    security decision to explain end to end. Say "deployed" only once it is.
 2. ~~**Migration**~~ DONE — `migrations/0000_init.sql` (baseline plus the
-   `job_url` unique index the dedupe depends on) and `0001_add_matching.sql`
-   (`match_score`, `match_rationale`, `cv_version_id`, 0-10 check, indexes).
+   `job_url` unique index the dedupe depends on), `0001_add_matching.sql`
+   (`match_score`, `match_rationale`, `cv_version_id`, 0-10 check, indexes),
+   and `0002_verify.sql` (changes nothing, raises if the live schema does not
+   match — `create table if not exists` repairs no drift, so the baseline
+   landing cleanly is not evidence that it matches).
    Queued roles reuse the `saved` status, so the CHECK constraint is unchanged.
-   **Run both in the Supabase SQL editor before first use.**
+   **Run all three in the Supabase SQL editor before first use**, and read the
+   header of `0000` first: enabling RLS is a one-way change that makes the anon
+   key read zero rows without returning an error.
 3. ~~**Worker**~~ DONE — `POST /api/queue` (agent intake, scored candidate),
    `POST /api/applications/:id/apply` (records the send, returns the apply URL),
    `GET /api/stats/daily` (per-day counts). Named `apply`, not `approve`.
@@ -140,9 +147,33 @@ itself distributable — the repo carries its prompt and setup instructions inst
 
 ### Known gap
 
-Every caller shares one `API_TOKEN`, so anything holding it can PATCH an
-arbitrary `applied_on` and inflate the daily count. Single-user trust model, not
+Every caller shares one `API_TOKEN`, so anything holding it can PATCH a
+back-dated `applied_on` and move the daily count. Single-user trust model, not
 an enforced boundary. A write-restricted agent token would close it.
+
+### Reviewed 2026-08-19
+
+Four review passes — code, security, design, developer experience — plus an
+adversarial red team and a test-coverage audit. What changed:
+
+- **Stored XSS through `job_url`** (P0). The agent ingests third-party job
+  postings; a `javascript:` URL reached an `href` and a `window.open()` on the
+  Worker's own origin, where it could read `API_TOKEN` out of `localStorage` —
+  and that token fronts a service-role key that bypasses RLS. Now rejected on
+  write and re-checked at both sinks.
+- **`status` and `applied_on` are one fact.** An explicit `applied_on: null`
+  used to slip past the stamp, and reverting a row to `saved` left the day it
+  was recorded inflated forever. Both directions are enforced now.
+- **Capped tallies are labelled.** `/api/stats` read 1000 rows unordered and
+  reported the result as a total; both stats endpoints now return `truncated`
+  and the dashboard renders `1000+`.
+- **PostgREST grammar injection** through the search box: a company name with a
+  comma broke the `or=` logic tree into a 400.
+- **The dashboard was laid out as a CRUD tool.** The queue now leads, the match
+  rationale is visible text rather than a hover tooltip, apply discloses what it
+  does and offers an undo, and the seven-column table becomes cards on a phone.
+- **The test suite never constructed a `Request`.** It does now: 125 tests, with
+  the fetch handler, the apply state machine and the client-side helpers covered.
 
 ## What I noticed about how you think
 

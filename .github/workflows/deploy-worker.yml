@@ -1,10 +1,23 @@
 name: Deploy Worker
 
 # Publishes job-tracker-worker to Cloudflare on every push to main that touches
-# it. Requires one repository secret: CLOUDFLARE_API_TOKEN (Workers Scripts:
-# Edit). The three runtime secrets — SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+# it. Two repository secrets, under Settings > Secrets and variables > Actions:
+#
+#   CLOUDFLARE_API_TOKEN   the "Edit Cloudflare Workers" template
+#   CLOUDFLARE_ACCOUNT_ID  the dashboard sidebar, or `npx wrangler whoami`
+#
+# Without the account ID a token that can see more than one account fails
+# non-interactively in a way that reads like a bad token. Without either, the
+# push and the tests still succeed and only this job goes red — nothing else
+# says the Worker was not updated, so check the Actions tab after the first push.
+#
+# The three runtime secrets — SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 # API_TOKEN — are set once on the Worker itself and are NOT needed here; a
 # deploy does not overwrite them.
+#
+# This is one of two possible deploy paths. If Cloudflare's Git integration is
+# connected to this repository as well, every push deploys twice. Pick one —
+# see the Deploy section of job-tracker-worker/README.md.
 
 on:
   push:
@@ -45,4 +58,5 @@ jobs:
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: job-tracker-worker

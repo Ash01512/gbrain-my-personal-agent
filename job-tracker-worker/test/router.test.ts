@@ -62,7 +62,9 @@ describe('listOptionsFromSearch', () => {
   it('builds PostgREST filter expressions', () => {
     expect(opts('status=applied').filters).toEqual({ status: 'eq.applied' })
     expect(opts('company=acme').filters).toEqual({ company: 'ilike.*acme*' })
-    expect(opts('q=eng').filters).toEqual({ or: '(company.ilike.*eng*,role.ilike.*eng*)' })
+    expect(opts('q=eng').filters).toEqual({
+      or: '(company.ilike."*eng*",role.ilike."*eng*")',
+    })
   })
 
   it('clamps limit into range and ignores junk', () => {

@@ -4,6 +4,40 @@ A Cloudflare Worker that puts a JSON API and a small dashboard in front of the
 `job-tracker` Supabase database. One deployable: no build step, no bundler
 config, no static asset hosting.
 
+## Quickstart
+
+Every command runs from `job-tracker-worker/`, not the repository root. Node 22
+or newer (wrangler requires it).
+
+```bash
+git clone https://github.com/Ash01512/gbrain-my-personal-agent.git
+cd gbrain-my-personal-agent/job-tracker-worker
+npm install
+```
+
+1. **Database first.** In the Supabase SQL editor run `migrations/0000_init.sql`,
+   then `0001_add_matching.sql`, then `0002_verify.sql`. The third one changes
+   nothing and tells you whether the first two landed. Read the header of
+   `0000` before running it against a database that already holds data.
+   Skipping `0001` makes `POST /api/queue` and `?queue=true` fail with a raw
+   PostgREST 400; skipping `0000` removes the unique index, and the agent
+   silently re-queues every role on every run.
+2. **Local secrets.** `cp .dev.vars.example .dev.vars`, then fill in the
+   Supabase URL, the service-role key, and a token from `openssl rand -hex 32`.
+3. **Run it.** `npm run dev`, open http://localhost:8787, paste the token into
+   the token field, press Connect.
+4. **Check it.** `npm run typecheck && npm test`.
+5. **Deploy.** Pick exactly one path from [Deploy](#deploy) below — connecting
+   both double-deploys.
+6. **Smoke test the deployment**, which needs the token, unlike `/api/health`:
+
+   ```bash
+   curl -sS -H "Authorization: Bearer $API_TOKEN" https://<worker-host>/api/applications
+   ```
+
+Everything to do with the scheduled agent that fills the queue lives in
+`docs/designs/job-tracker-agent.md`, one directory up.
+
 ## Security model
 
 Read this before deploying.
@@ -50,6 +84,14 @@ Generate a real token: `openssl rand -hex 32`.
 `limit` is clamped to 1–200 and defaults to 50; `order` defaults to
 `created_at.desc`.
 
+Both stats endpoints read at most 1000 rows and return `truncated: true` when
+they hit that cap. The dashboard renders a capped figure as `1000+` rather than
+letting it pass for a real total.
+
+`%` and `_` inside `q` or `company` reach Postgres as `LIKE` wildcards. Commas,
+quotes and parentheses do not — they are quoted into a single search term, so a
+company called `Smith, Jones & Co` searches correctly instead of returning 400.
+
 ## The apply loop
 
 This is the part worth understanding before you trust the numbers.
@@ -70,19 +112,25 @@ the apply link. So the loop is:
 Guards that keep the daily number honest:
 
 - **Re-applying is a 409.** Clicking apply twice cannot inflate the count.
-- **Re-applying never moves a date.** A row applied to last week and reverted
-  to `saved` keeps its original `applied_on`, so history cannot be shuffled
-  onto today.
 - **The queue endpoint cannot claim an application.** `parseQueueItem` forces
   `status` to `saved` and strips `applied_on`, so the agent's normal path
   cannot mark anything sent.
-- **Changing status to `applied` anywhere stamps the date**, including the
-  dashboard dropdown. Otherwise an application would be invisible to the daily
-  count while still showing as applied.
+- **`status` and `applied_on` move together, in both directions.** Any change to
+  `applied` stamps a date — including the dashboard dropdown, and including a
+  request that explicitly sends `applied_on: null`, which would otherwise
+  produce a row that counts as applied but is invisible to the daily rollup.
+  Any change back to `saved` clears the date, so a row recorded by mistake and
+  reverted stops inflating that day. Every stage *after* applying — screening,
+  interview, offer, rejected, withdrawn — keeps its date, because those describe
+  what happened to an application that really was sent.
+- **A write that matched nothing is a 404, not a 200.** The apply endpoint reads
+  then writes, so the row can be deleted in between.
+- **A future `applied_on` is excluded** from the daily rollup rather than
+  consuming the row cap and pushing real recent days out of the window.
 
 **What is not guarded:** every caller shares one `API_TOKEN`, so anything
-holding it can `PATCH /api/applications/:id` with an arbitrary `applied_on` and
-inflate the count. This is a single-user trust model, not an enforced boundary.
+holding it can `PATCH /api/applications/:id` with a back-dated `applied_on` and
+move the count. This is a single-user trust model, not an enforced boundary.
 Splitting the agent onto a write-restricted token would fix it and is not built.
 
 The count means "applications recorded as sent", not "roles the agent found".
@@ -103,14 +151,21 @@ An invalid zone falls back to UTC rather than failing the request.
 
 ## Database migration
 
-Run both in order in the Supabase SQL editor. Both are guarded and safe to
-re-run against the existing project.
+Run these in order in the Supabase SQL editor, **before the first request**.
 
 - `migrations/0000_init.sql` — baseline: the three tables, RLS, and the
   **unique index on `job_url`** that the queue's 409 dedupe depends on.
 - `migrations/0001_add_matching.sql` — `match_score`, `match_rationale`,
   `cv_version_id`, the 0-10 check constraint, and the indexes the queue
   ordering and daily rollup read.
+- `migrations/0002_verify.sql` — changes nothing, raises if the live schema
+  does not match what the Worker assumes.
+
+`0001` is re-runnable. `0000` is not entirely: `create table if not exists` is
+a no-op on an existing table and repairs no drift, the unique index aborts if
+duplicate `job_url` values already exist, and enabling RLS is a one-way state
+change that makes the anon key read zero rows *without* returning an error.
+Its header says what to check first. Run `0002` afterwards either way.
 
 ### Status values
 
@@ -130,22 +185,28 @@ so a bad value returns a 400 naming the field instead of a Postgres error.
 | Unknown row | 404 |
 | Known path, unsupported verb | 405 |
 | Duplicate `job_url` (unique index) | 409 |
+| Row created (`POST` to a collection or `/api/queue`) | 201 |
+| `SUPABASE_URL` or `SUPABASE_SERVICE_ROLE_KEY` unset | 503, naming the variable |
 | Supabase 5xx or unreachable | 502 |
+| Anything unrecognised | 500 `internal error`; detail goes to the Worker log only |
 
 ## Deploy
 
-### Option 1 — from the Cloudflare dashboard, no CLI (recommended)
+**Choose exactly one path.** Connecting Cloudflare's Git integration *and*
+leaving the GitHub Actions workflow enabled means every push deploys twice, and
+the run without a token fails — a permanent red X on a repository that is in
+fact deploying fine.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://dash.cloudflare.com/?to=/:account/workers-and-pages/create/deploy-to-workers&repository=https://github.com/Ash01512/job-tracker-agent)
-
-Or connect the repository manually, which is the more reliable route because this
-Worker lives in a subdirectory:
+### Option 1 — Cloudflare's Git integration, no CLI (recommended)
 
 1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Connect to Git**
-2. Pick `Ash01512/job-tracker-agent`
-3. Set **root directory** to `job-tracker-worker`
+2. Pick `Ash01512/gbrain-my-personal-agent`
+3. Set **root directory** to `job-tracker-worker` — the Worker is not at the
+   repository root
 4. Deploy, then add the three secrets under **Settings → Variables and Secrets**:
    `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`
+5. Delete `.github/workflows/deploy-worker.yml`, or strip it down to the
+   typecheck-and-test job, so the two paths do not both fire
 
 Every push to the connected branch redeploys. Free plan covers this.
 
@@ -156,6 +217,7 @@ See `docs/designs/job-tracker-agent.md`.
 ### Option 2 — from the CLI
 
 ```bash
+cd job-tracker-worker
 npm install
 npx wrangler login
 npx wrangler secret put SUPABASE_URL                # https://<ref>.supabase.co
@@ -164,21 +226,46 @@ npx wrangler secret put API_TOKEN                   # openssl rand -hex 32
 npx wrangler deploy
 ```
 
-After either route, check `/api/health` — it reports which variables are set
-without revealing their values.
+### Option 3 — GitHub Actions
+
+`.github/workflows/deploy-worker.yml` typechecks and tests on every push, and
+deploys when the push is to `main` and touches `job-tracker-worker/**`. It needs
+two repository secrets under **Settings → Secrets and variables → Actions**:
+
+| Secret | Where it comes from |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → **Edit Cloudflare Workers** template |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard sidebar, or `npx wrangler whoami` |
+
+If either is missing the push still succeeds and the tests still pass — the
+deploy step fails inside the Actions log and the Worker is simply never updated.
+Nothing on the repository page says so, so check the Actions tab after the first
+push. The account ID matters whenever the token can see more than one account:
+without it wrangler cannot pick one non-interactively and fails in a way that
+reads like a bad token.
+
+After any route, check `/api/health` — it reports which variables are set,
+never their values, and answers 503 rather than 200 if any is missing. Then run
+the authenticated smoke test in [Quickstart](#quickstart), which is the first
+thing that actually exercises the credentials.
 
 ## Local development
 
 ```bash
+cd job-tracker-worker
 npm install
+cp .dev.vars.example .dev.vars   # then fill in the three values
 ```
 
-Copy `.dev.vars.example` to `.dev.vars` and fill it in.
 `.dev.vars` is gitignored — keep it that way, it holds a key that bypasses RLS.
 
 ```bash
 npm run dev        # http://localhost:8787
 ```
+
+Everything returning `unauthorized`? Open http://localhost:8787/api/health. If
+`api_token` is `false` the Worker has no token at all and the problem is
+`.dev.vars`, not what you pasted into the dashboard.
 
 Open the dashboard, paste the API token into the token field, and hit Connect.
 The token is kept in `localStorage` and sent as a header, so it never lands in
@@ -187,13 +274,17 @@ the URL, browser history, or server logs.
 ## Checks
 
 ```bash
+cd job-tracker-worker
 npm run typecheck
 npm test
 ```
 
-66 tests cover schema validation, route matching, query building, the auth
-comparison, and the Supabase error mapping. They stub `fetch`, so they need no
-network and no database.
+121 tests. Most cover the pure helpers — schema validation, route matching,
+query building, the auth comparison, the Supabase error mapping — and
+`test/worker.test.ts` drives the fetch handler itself, which is where the auth
+gate, the error mapping and the `applied_on` rules actually compose.
+`test/ui.test.ts` evaluates the dashboard's client-side helpers from the exact
+source the page ships. Everything stubs `fetch`, so no network and no database.
 
 ## Design notes
 
@@ -209,11 +300,24 @@ closes off filter injection through the path.
 **`updated_at` is stamped on every PATCH.** The column has a default but no
 trigger, so the Worker sets it rather than letting it silently go stale.
 
+**`job_url` must be `http` or `https`, checked twice.** The URL comes from
+third-party job postings the matching agent ingests, and the dashboard puts it
+in an `href` and a `window.open()` the human is told to click. A `javascript:`
+URL there runs on the Worker's own origin, where it can read `API_TOKEN` out of
+`localStorage` — and that token fronts a service-role key that bypasses RLS.
+`schema.ts` refuses to store one; `ui.ts` re-checks before opening anything,
+because the apply button reads its URL back from `dataset`, which decodes the
+entity escaping that made the attribute safe.
+
 ## Not yet verified
 
 The Worker has not been run against the real Supabase project — that needs the
 service-role key, which is not available in the environment where this was
 built. Routing, auth, validation, and error mapping were all exercised against
 a live `wrangler dev`; the actual PostgREST round-trip was exercised only
-against a stubbed `fetch`. Run `/api/health` and then `GET /api/applications`
-after the first deploy to confirm the credentials work.
+against a stubbed `fetch`. In particular the double-quoted filter values that
+`q` now builds, and `applied_on=lte.<today>` on the daily rollup, are correct
+per the PostgREST grammar but have not been run against a live instance.
+
+Run `migrations/0002_verify.sql`, then `/api/health`, then the authenticated
+`GET /api/applications` from [Quickstart](#quickstart) after the first deploy.

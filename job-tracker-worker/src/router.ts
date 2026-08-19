@@ -85,34 +85,50 @@ export function matchRoute(
 }
 
 /**
+ * Wraps a filter value in PostgREST's double-quote form.
+ *
+ * Inside a logic tree (`or=(...)`) commas and parentheses are the grammar's
+ * own separators, so an unquoted company name like `Smith, Jones & Co` splits
+ * into terms that do not parse and returns an opaque 400 for an entirely
+ * ordinary search. Quoting keeps the value one token; `*` still means the
+ * wildcard, which is what the caller wants here.
+ */
+function quoted(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+/**
  * Translates ?status=&company=&q=&limit=&offset= into PostgREST filters.
  *
- * `supportsQueue` gates the queue-mode columns. Only `applications` has
- * `status` and `match_score`, so applying queue semantics elsewhere would
- * send PostgREST a filter on a column that does not exist and surface a raw
- * 400 to the caller.
+ * Filters are gated by what the table actually has. Sending PostgREST a
+ * filter on a column that does not exist surfaces a raw 400 to the caller:
+ * `status` is absent from `cv_versions`, and `company`, `role` and
+ * `match_score` exist only on `applications`.
  */
-export function listOptionsFromSearch(search: URLSearchParams, supportsQueue = true) {
+export function listOptionsFromSearch(
+  search: URLSearchParams,
+  table: Match['table'] = 'applications',
+) {
   const filters: Record<string, string> = {}
+  const isApplications = table === 'applications'
+  const hasStatus = table !== 'cv_versions'
 
-  const status = search.get('status')
+  const status = hasStatus ? search.get('status') : null
   if (status) filters.status = `eq.${status}`
 
-  // company and role exist only on applications, so these filters are gated
-  // for the same reason queue mode is.
-  const company = supportsQueue ? search.get('company') : null
+  const company = isApplications ? search.get('company') : null
   if (company) filters.company = `ilike.*${company}*`
 
   // Free-text across the two columns worth searching.
-  const q = supportsQueue ? search.get('q') : null
-  if (q) filters.or = `(company.ilike.*${q}*,role.ilike.*${q}*)`
+  const q = isApplications ? search.get('q') : null
+  if (q) filters.or = `(company.ilike.${quoted(`*${q}*`)},role.ilike.${quoted(`*${q}*`)})`
 
   const limit = clampInt(search.get('limit'), 50, 1, 200)
   const offset = clampInt(search.get('offset'), 0, 0, Number.MAX_SAFE_INTEGER)
 
   // ?queue=true is the review list: everything not yet sent, best fit first.
   // An explicit status filter wins, so ?queue=true&status=applied still works.
-  const queueMode = supportsQueue && search.get('queue') === 'true'
+  const queueMode = isApplications && search.get('queue') === 'true'
   if (queueMode && !filters.status) filters.status = 'eq.saved'
 
   const defaultOrder = queueMode

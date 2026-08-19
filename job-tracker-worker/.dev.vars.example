@@ -10,3 +10,9 @@ SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 # Shared secret this Worker requires on every /api request.
 # Generate one: openssl rand -hex 32
 API_TOKEN="generate-a-long-random-token"
+
+# Optional. IANA zone that decides which calendar day an application belongs
+# to. Defaults to UTC, which for a UTC+4 user files anything sent after 20:00
+# local under the next day and resets "sent today" at 04:00 local.
+# An invalid value falls back to UTC silently, so check the spelling.
+APP_TIMEZONE="Asia/Dubai"

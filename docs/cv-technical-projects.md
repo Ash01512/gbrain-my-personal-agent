@@ -38,7 +38,7 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
   sent; the apply endpoint records what the user actually submits and rejects
   duplicates with a 409 so the count cannot inflate.
 - Stack: TypeScript, Cloudflare Workers, Supabase (Postgres, PostgREST), Vitest.
-  66 tests, no network required. CI gates deployment on the suite passing.
+  125 tests, no network required. CI gates deployment on the suite passing.
 - github.com/Ash01512/job-tracker-agent
 
 **1099-INT Check** | Independent Project | 2026

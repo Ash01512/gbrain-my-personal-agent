@@ -76,7 +76,30 @@ type Rules = {
   dates?: string[]
   /** [min, max] inclusive. */
   numbers?: Record<string, [number, number]>
+  /** Must parse as a URL with an http/https scheme. */
+  urls?: string[]
   enums?: Record<string, readonly string[]>
+}
+
+/**
+ * Only http and https may be stored.
+ *
+ * These URLs come from third-party job postings and are later put into an
+ * anchor href and window.open() in the dashboard. A `javascript:` URL there
+ * executes on the Worker's own origin, where it can read the API token out of
+ * localStorage — and that token fronts a service-role key that bypasses RLS.
+ * Rejecting the scheme at the door is the cheap half of the fix; ui.ts
+ * re-checks before it opens anything.
+ */
+const SAFE_URL_SCHEMES = new Set(['http:', 'https:'])
+
+export function isSafeUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  try {
+    return SAFE_URL_SCHEMES.has(new URL(value).protocol)
+  } catch {
+    return false
+  }
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
@@ -124,6 +147,10 @@ function validate(
       const options = rules.enums[key]
       if (typeof value !== 'string' || !options.includes(value)) {
         throw new ValidationError(`${key} must be one of: ${options.join(', ')}`)
+      }
+    } else if ((rules.urls ?? []).includes(key)) {
+      if (!isSafeUrl(value)) {
+        throw new ValidationError(`${key} must be an http or https URL`)
       }
     } else if (rules.numbers?.[key]) {
       const [min, max] = rules.numbers[key]
@@ -180,7 +207,6 @@ const APPLICATION_RULES: Rules = {
     'company',
     'role',
     'location',
-    'job_url',
     'source',
     'salary_range',
     'contact_name',
@@ -189,6 +215,7 @@ const APPLICATION_RULES: Rules = {
     'match_rationale',
     'cv_version_id',
   ],
+  urls: ['job_url'],
   dates: ['applied_on', 'last_contact_on'],
   numbers: { match_score: [0, 10] },
   enums: { status: APPLICATION_STATUSES },
@@ -198,7 +225,8 @@ const CV_VERSION_COLUMNS = ['label', 'content', 'file_url', 'target_role', 'is_d
 
 const CV_VERSION_RULES: Rules = {
   required: ['label'],
-  strings: ['label', 'content', 'file_url', 'target_role'],
+  strings: ['label', 'content', 'target_role'],
+  urls: ['file_url'],
   booleans: ['is_default'],
 }
 

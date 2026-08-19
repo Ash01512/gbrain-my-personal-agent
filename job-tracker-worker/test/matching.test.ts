@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import { listOptionsFromSearch, matchRoute, tallyDaily } from '../src/router'
-import { ValidationError, parseApplication, parseQueueItem } from '../src/schema'
+import {
+  ValidationError,
+  isSafeUrl,
+  parseApplication,
+  parseCvVersion,
+  parseQueueItem,
+} from '../src/schema'
+
+const valid = {
+  company: 'Emirates Group',
+  role: 'Asset Data Lead',
+  job_url: 'https://example.com/job/1',
+  match_score: 8.5,
+  match_rationale: 'CMMS data plus 12 years facilities',
+}
 
 describe('parseQueueItem', () => {
-  const valid = {
-    company: 'Emirates Group',
-    role: 'Asset Data Lead',
-    job_url: 'https://example.com/job/1',
-    match_score: 8.5,
-    match_rationale: 'CMMS data plus 12 years facilities',
-  }
 
   it('accepts a fully specified candidate', () => {
     expect(parseQueueItem(valid)).toMatchObject({ match_score: 8.5 })
@@ -42,7 +49,58 @@ describe('parseQueueItem', () => {
 
   it('is stricter than a manual create', () => {
     expect(() => parseQueueItem({ company: 'A', role: 'B' })).toThrow(ValidationError)
-    expect(parseApplication({ company: 'A', role: 'B' })).toBeTruthy()
+    // Exact shape, not toBeTruthy: `{}` would have passed that, and a parser
+    // that dropped every column would send empty INSERTs to PostgREST.
+    expect(parseApplication({ company: 'A', role: 'B' })).toEqual({ company: 'A', role: 'B' })
+  })
+
+  it('accepts a perfect score and rejects just past it', () => {
+    // A 10 is the single most valuable candidate the agent can emit, so the
+    // inclusive boundary is worth pinning.
+    expect(parseQueueItem({ ...valid, match_score: 10 }).match_score).toBe(10)
+    expect(() => parseQueueItem({ ...valid, match_score: 10.0001 })).toThrow(/between 0 and 10/)
+    expect(parseQueueItem({ ...valid, match_score: 0 }).match_score).toBe(0)
+  })
+})
+
+describe('stored URLs must be openable, not executable', () => {
+  it('accepts http and https', () => {
+    expect(isSafeUrl('https://jobs.example/1')).toBe(true)
+    expect(isSafeUrl('http://jobs.example/1')).toBe(true)
+  })
+
+  it('rejects schemes that would run as script in the dashboard', () => {
+    for (const hostile of [
+      'javascript:alert(1)',
+      'JAVASCRIPT:alert(1)',
+      'data:text/html,<script>alert(1)</script>',
+      'vbscript:msgbox(1)',
+      'file:///etc/passwd',
+    ]) {
+      expect(isSafeUrl(hostile)).toBe(false)
+    }
+  })
+
+  it('rejects anything that is not an absolute URL at all', () => {
+    for (const bad of ['', 'jobs.example/1', '/relative', null, undefined, 7]) {
+      expect(isSafeUrl(bad)).toBe(false)
+    }
+  })
+
+  it('refuses the write rather than storing it and hoping the page copes', () => {
+    expect(() => parseQueueItem({ ...valid, job_url: 'javascript:alert(1)' })).toThrow(
+      /job_url must be an http or https URL/,
+    )
+    expect(() =>
+      parseApplication({ company: 'A', role: 'B', job_url: 'javascript:alert(1)' }),
+    ).toThrow(/job_url/)
+    expect(() => parseCvVersion({ label: 'v1', file_url: 'javascript:alert(1)' })).toThrow(
+      /file_url/,
+    )
+  })
+
+  it('still allows clearing the field', () => {
+    expect(parseApplication({ job_url: null }, true)).toEqual({ job_url: null })
   })
 })
 

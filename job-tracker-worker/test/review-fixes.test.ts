@@ -35,35 +35,66 @@ describe('localDate — applications filed under the wrong day (UTC-only clock)'
 })
 
 describe('queue filters must not leak onto collections without those columns', () => {
-  const opts = (qs: string, supportsQueue: boolean) =>
-    listOptionsFromSearch(new URLSearchParams(qs), supportsQueue)
+  const opts = (qs: string, table?: 'applications' | 'cv_versions' | 'cover_letters') =>
+    listOptionsFromSearch(new URLSearchParams(qs), table)
 
   it('ignores queue mode for cv_versions and cover_letters', () => {
-    const o = opts('queue=true', false)
-    expect(o.filters.status).toBeUndefined()
-    expect(o.order).toBe('created_at.desc')
+    for (const table of ['cv_versions', 'cover_letters'] as const) {
+      const o = opts('queue=true', table)
+      expect(o.filters.status).toBeUndefined()
+      expect(o.order).toBe('created_at.desc')
+    }
   })
 
   it('ignores company and q, which only exist on applications', () => {
-    const o = opts('company=acme&q=eng', false)
+    const o = opts('company=acme&q=eng', 'cover_letters')
     expect(o.filters.company).toBeUndefined()
     expect(o.filters.or).toBeUndefined()
   })
 
-  it('still honours status, which cover_letters does have', () => {
-    expect(opts('status=draft', false).filters.status).toBe('eq.draft')
+  it('honours status on cover_letters, which has the column', () => {
+    expect(opts('status=draft', 'cover_letters').filters.status).toBe('eq.draft')
+  })
+
+  it('drops status on cv_versions, which does not have the column', () => {
+    // The old gate let this through and surfaced a raw PostgREST 400.
+    expect(opts('status=draft', 'cv_versions').filters.status).toBeUndefined()
   })
 
   it('keeps every filter for applications', () => {
-    const o = opts('queue=true&company=acme&q=eng', true)
+    const o = opts('queue=true&company=acme&q=eng', 'applications')
     expect(o.filters.status).toBe('eq.saved')
     expect(o.filters.company).toBe('ilike.*acme*')
-    expect(o.filters.or).toBe('(company.ilike.*eng*,role.ilike.*eng*)')
+    expect(o.filters.or).toBe('(company.ilike."*eng*",role.ilike."*eng*")')
   })
 
-  it('defaults to full behaviour when the flag is omitted', () => {
+  it('defaults to applications when the table is omitted', () => {
     expect(listOptionsFromSearch(new URLSearchParams('queue=true')).filters.status).toBe(
       'eq.saved',
     )
+  })
+})
+
+describe('free-text search must survive punctuation in a company name', () => {
+  const or = (q: string) =>
+    listOptionsFromSearch(new URLSearchParams(`q=${encodeURIComponent(q)}`)).filters.or
+
+  it('keeps a comma inside one quoted term instead of splitting the logic tree', () => {
+    // Unquoted, PostgREST read this as four terms and 400d on the two halves.
+    expect(or('Smith, Jones')).toBe(
+      '(company.ilike."*Smith, Jones*",role.ilike."*Smith, Jones*")',
+    )
+  })
+
+  it('escapes quotes and backslashes so the value cannot end early', () => {
+    expect(or('a"b')).toBe('(company.ilike."*a\\"b*",role.ilike."*a\\"b*")')
+    expect(or('a\\b')).toBe('(company.ilike."*a\\\\b*",role.ilike."*a\\\\b*")')
+  })
+
+  it('cannot inject an extra term through parentheses', () => {
+    const built = or('x*,role.ilike.*')
+    expect(built).toBe('(company.ilike."*x*,role.ilike.**",role.ilike."*x*,role.ilike.**")')
+    // Two terms, not four: every comma the caller supplied is inside quotes.
+    expect(built!.split('",').length).toBe(2)
   })
 })

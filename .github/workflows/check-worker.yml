@@ -1,0 +1,39 @@
+name: Check Worker
+
+# Typechecks and tests job-tracker-worker on every push and pull request that
+# touches it. It does NOT deploy.
+#
+# Deployment is owned by Cloudflare's Git integration (Workers & Pages > the
+# Worker > Settings > Build), which redeploys on every push to the connected
+# branch. This workflow used to deploy as well. Both paths connected at once
+# means every push deploys twice, and the run without an API token goes red on
+# a repository that is in fact deploying fine — so there is one owner now.
+#
+# The three runtime secrets — SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and
+# API_TOKEN — are set once on the Worker itself, in the Cloudflare dashboard.
+# Neither this workflow nor a deploy needs them, and a deploy does not
+# overwrite them.
+
+on:
+  push:
+    paths: ['job-tracker-worker/**', '.github/workflows/check-worker.yml']
+  pull_request:
+    paths: ['job-tracker-worker/**', '.github/workflows/check-worker.yml']
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: job-tracker-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the engines field in package.json; wrangler requires 22+.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: job-tracker-worker/package-lock.json
+      - run: npm ci
+      - run: npm run check

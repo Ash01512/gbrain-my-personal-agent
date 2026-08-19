@@ -192,62 +192,61 @@ so a bad value returns a 400 naming the field instead of a Postgres error.
 
 ## Deploy
 
-**Choose exactly one path.** Connecting Cloudflare's Git integration *and*
-leaving the GitHub Actions workflow enabled means every push deploys twice, and
-the run without a token fails — a permanent red X on a repository that is in
-fact deploying fine.
-
-### Option 1 — Cloudflare's Git integration, no CLI (recommended)
+Cloudflare's Git integration owns deployment. `.github/workflows/check-worker.yml`
+typechecks and tests but deliberately does **not** deploy: with both paths
+connected, every push deploys twice and the run without an API token goes red on
+a repository that is in fact deploying fine.
 
 1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Connect to Git**
 2. Pick `Ash01512/gbrain-my-personal-agent`
 3. Set **root directory** to `job-tracker-worker` — the Worker is not at the
-   repository root
-4. Deploy, then add the three secrets under **Settings → Variables and Secrets**:
-   `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`
-5. Delete `.github/workflows/deploy-worker.yml`, or strip it down to the
-   typecheck-and-test job, so the two paths do not both fire
+   repository root. This is the step that is easy to miss and the reason the
+   build fails with "no package.json" if you do
+4. Deploy, then add the secrets under **Settings → Variables and Secrets**.
+   Three are required, as **Secret** type: `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`. Add `APP_TIMEZONE` as a plain
+   **Text** variable — it is not a secret, and without it the daily count rolls
+   over at 04:00 local for a UTC+4 user
+5. Redeploy so the new secrets are picked up — variables added after a deploy do
+   not apply to the running version
 
 Every push to the connected branch redeploys. Free plan covers this.
+
+The Worker will answer before the secrets exist. That is deliberate and safe:
+without `API_TOKEN` every `/api` route 401s rather than serving the database,
+and without the Supabase pair it answers 503 naming the variable. `/api/health`
+returns 503 until all three are set, so it is the quickest way to tell a
+half-configured deployment from a working one.
 
 **Not Cloudflare Pages.** Pages has no Cron Triggers, which this project needs for
 the scheduled agent loop, and a Worker already serves the dashboard HTML directly.
 See `docs/designs/job-tracker-agent.md`.
 
-### Option 2 — from the CLI
+### Setting the same thing from the CLI
+
+Equivalent, if you would rather not use the dashboard. Do not do both for the
+same Worker on the same day without checking which one won.
 
 ```bash
 cd job-tracker-worker
 npm install
-npx wrangler login
+npx wrangler login                                  # interactive, opens a browser
 npx wrangler secret put SUPABASE_URL                # https://<ref>.supabase.co
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY   # Settings > API > service_role
 npx wrangler secret put API_TOKEN                   # openssl rand -hex 32
 npx wrangler deploy
 ```
 
-### Option 3 — GitHub Actions
+`APP_TIMEZONE` is not a secret — uncomment the `[vars]` block in `wrangler.toml`
+rather than using `secret put`.
 
-`.github/workflows/deploy-worker.yml` typechecks and tests on every push, and
-deploys when the push is to `main` and touches `job-tracker-worker/**`. It needs
-two repository secrets under **Settings → Secrets and variables → Actions**:
+### Confirming it worked
 
-| Secret | Where it comes from |
-| --- | --- |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → **Edit Cloudflare Workers** template |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard sidebar, or `npx wrangler whoami` |
-
-If either is missing the push still succeeds and the tests still pass — the
-deploy step fails inside the Actions log and the Worker is simply never updated.
-Nothing on the repository page says so, so check the Actions tab after the first
-push. The account ID matters whenever the token can see more than one account:
-without it wrangler cannot pick one non-interactively and fails in a way that
-reads like a bad token.
-
-After any route, check `/api/health` — it reports which variables are set,
-never their values, and answers 503 rather than 200 if any is missing. Then run
-the authenticated smoke test in [Quickstart](#quickstart), which is the first
-thing that actually exercises the credentials.
+`/api/health` reports which variables are set, never their values, and answers
+503 rather than 200 if any is missing. It does not touch Supabase, so passing it
+proves configuration and nothing more. Then run the authenticated smoke test in
+[Quickstart](#quickstart) — that is the first thing that actually exercises the
+credentials against the database.
 
 ## Local development
 

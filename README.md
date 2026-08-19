@@ -14,7 +14,7 @@ approval dashboard over a Supabase database. Every command in it runs from
 | --- | --- |
 | `job-tracker-worker/` | The Worker: API, dashboard, migrations, tests |
 | `docs/designs/job-tracker-agent.md` | The approved design, and why the agent loop runs as a scheduled Claude session rather than inside the Worker |
-| `.github/workflows/deploy-worker.yml` | Typecheck, test, and optionally deploy |
+| `.github/workflows/check-worker.yml` | Typecheck and test on every push and PR. Deployment is Cloudflare's Git integration, not this |
 | `.claude/hooks/session-start.sh` | Rebuilds the agent toolchain in an ephemeral container |
 | `CLAUDE.md` | Agent tooling notes for this workspace |
 

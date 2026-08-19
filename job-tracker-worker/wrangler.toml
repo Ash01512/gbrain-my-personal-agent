@@ -8,7 +8,15 @@ compatibility_date = "2026-08-01"
 #   SUPABASE_SERVICE_ROLE_KEY
 #   API_TOKEN
 #
-# APP_TIMEZONE is optional and not a secret, so it can live in [vars] below.
+# APP_TIMEZONE is optional and not a secret, so it can live in # Do not delete dashboard-set variables on deploy. Without this, wrangler
+# clears every var not listed below on each deploy — so three secrets added
+# through the dashboard as plain variables vanish on the next push, and
+# /api/health reports all three false with nothing explaining why. Secrets are
+# never deleted either way; this covers the case where they were added as
+# plain variables by mistake.
+keep_vars = true
+
+[vars] below.
 #
 # The service-role key bypasses RLS, which is why the Worker requires
 # API_TOKEN on every /api route. See README "Security model".
@@ -16,6 +24,14 @@ compatibility_date = "2026-08-01"
 # Which calendar day an application belongs to. Not a secret, so it lives here
 # rather than in `wrangler secret put`. Without it the daily count runs on UTC
 # and rolls over at 04:00 local for a UTC+4 user.
+# Do not delete dashboard-set variables on deploy. Without this, wrangler
+# clears every var not listed below on each deploy — so three secrets added
+# through the dashboard as plain variables vanish on the next push, and
+# /api/health reports all three false with nothing explaining why. Secrets are
+# never deleted either way; this covers the case where they were added as
+# plain variables by mistake.
+keep_vars = true
+
 [vars]
 APP_TIMEZONE = "Asia/Dubai"
 

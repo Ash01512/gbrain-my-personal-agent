@@ -48,6 +48,14 @@ describe('the two wrangler configs cannot drift apart', () => {
     expect(root.APP_TIMEZONE).toBe('Asia/Dubai')
   })
 
+  it('keeps dashboard-set variables through a deploy', () => {
+    // Without this, wrangler deletes every var not in the config on each
+    // deploy. Three secrets added through the dashboard as plain variables
+    // disappeared on the next push, and /api/health reported all three false.
+    expect(root.keep_vars).toBe('true')
+    expect(local.keep_vars).toBe('true')
+  })
+
   it('points the root config at the real entrypoint', () => {
     expect(local.main).toBe('src/index.ts')
     expect(root.main).toBe('job-tracker-worker/src/index.ts')

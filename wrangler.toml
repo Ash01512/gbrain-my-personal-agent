@@ -16,6 +16,14 @@ name = "job-tracker-worker"
 main = "job-tracker-worker/src/index.ts"
 compatibility_date = "2026-08-01"
 
+# Do not delete dashboard-set variables on deploy. Without this, wrangler
+# clears every var not listed below on each deploy — so three secrets added
+# through the dashboard as plain variables vanish on the next push, and
+# /api/health reports all three false with nothing explaining why. Secrets are
+# never deleted either way; this covers the case where they were added as
+# plain variables by mistake.
+keep_vars = true
+
 [vars]
 APP_TIMEZONE = "Asia/Dubai"
 

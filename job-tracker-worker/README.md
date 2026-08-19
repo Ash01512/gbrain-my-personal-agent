@@ -245,9 +245,17 @@ a repository that is in fact deploying fine.
    `wrangler versions upload`, which uploads a version without putting it live
    — the build goes green and nothing serves
 6. Then add the secrets under **Settings → Variables and Secrets**, all three
-   as **Secret** type: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-   `API_TOKEN`. `APP_TIMEZONE` is already set from `wrangler.toml` and does not
-   need adding
+   as **Secret** type — tick the Secret box, do not add them as plain
+   variables: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`.
+   `APP_TIMEZONE` is already set from `wrangler.toml` and does not need adding.
+
+   **Why Secret specifically.** By default `wrangler deploy` deletes every
+   plain variable not present in the config before setting the ones that are,
+   so three values added through the dashboard as plain variables disappear on
+   the next push — and `/api/health` then reports all three `false` with
+   nothing explaining why. Secrets are never deleted by a deployment.
+   `keep_vars = true` in `wrangler.toml` now covers the mistake as well, but
+   the service-role key belongs encrypted regardless
 7. Confirm the variables are live rather than staged. The dashboard may hold
    changes behind a **Deploy** button depending on the UI version, so do not
    assume — `/api/health` is the definitive answer: it returns 503 while any of

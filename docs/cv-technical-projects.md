@@ -1,55 +1,66 @@
-# TECHNICAL PROJECTS — draft for CV
+# CV — filled fields
 
-Paste-ready replacement for the `[ FILL THIS IN ]` block in
-`Ashraf_Abbas_CV_Data_Operations.pdf`. Follows the format the CV template asks
-for: what it does in one line, one real engineering decision and why, then the
-stack and the URL.
+The two blanks in `Ashraf_Abbas_CV_Data_Operations.pdf`, filled. Paste these
+into the existing document so its formatting is preserved.
 
-Every claim below is checkable against the repository. Nothing is aspirational.
+Every claim is checkable against the repositories. Nothing is aspirational.
 
 ---
 
-**Job Tracker — Application Pipeline** | Independent Project | 2026
+## 1. Header line
+
+Replace `[ GitHub — add your profile URL ]` with:
+
+```
+github.com/Ash01512
+```
+
+---
+
+## 2. TECHNICAL PROJECTS
+
+Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
+
+---
+
+**Job Tracker Agent** | Independent Project | 2026
 
 - A Cloudflare Worker serving a JSON API and dashboard over a Postgres database
-  that tracks job applications, CV versions, and cover letters through a
-  seven-stage pipeline from saved to offer.
+  that scores incoming roles against my CV, queues them for review, and records
+  each application so daily and per-day application counts stay accurate.
 - Row-level security is enabled on every table with no policies, so the public
-  key reads nothing and the Worker has to hold the service-role key that bypasses
-  RLS. That makes the Worker itself the security boundary: every API route
-  requires a shared token, and a missing token fails closed rather than leaving
-  the database exposed to anyone who finds the URL.
+  key reads nothing and the Worker holds the service-role key that bypasses RLS.
+  That makes the Worker itself the security boundary: every API route requires a
+  shared token and a missing token fails closed, rather than leaving the database
+  open to anyone who finds the URL.
+- Chose to keep submission a human action. The job board's API exposes search and
+  read only, so an "auto-apply" would have reported applications that were never
+  sent; the apply endpoint records what the user actually submits and rejects
+  duplicates with a 409 so the count cannot inflate.
 - Stack: TypeScript, Cloudflare Workers, Supabase (Postgres, PostgREST), Vitest.
-  66 tests, no network required.
-- https://github.com/Ash01512/job-tracker-agent
-
----
+  66 tests, no network required. CI gates deployment on the suite passing.
+- github.com/Ash01512/job-tracker-agent
 
 **1099-INT Check** | Independent Project | 2026
 
-<!--
-PENDING VERIFICATION — do not paste this entry until the two lines below are
-confirmed against the repository. The one-liner is taken from the repo's own
-description; the engineering-decision line is deliberately blank because the
-code has not been read.
--->
-
 - Landing page for extension filers checking 1099-INT interest forms against
   their IRS Wage and Income Transcript before the 15 October deadline.
-- `[ engineering decision — pending: needs one real choice from the code and why ]`
 - Stack: Cloudflare Workers, HTML.
-- https://github.com/Ash01512/1099-int-check
+- github.com/Ash01512/1099-int-check
 
 ---
 
-## Before this goes in the CV
+## Before you send it
 
-1. **Do not write "deployed" for Job Tracker yet.** It is committed and tested,
-   not deployed. The CV template asks for projects that are "deployed or
-   committed" — committed is true today, deployed is not. Claiming a live
-   deployment that a reviewer cannot reach is worse than claiming nothing.
-2. **Fill the GitHub URL in the CV header** — it currently reads
-   `[ GitHub — add your profile URL ]`. It is https://github.com/Ash01512
-3. **Finish the 1099-INT entry** once the engineering decision is confirmed.
-   Two real projects beat six aspirational ones, but a half-filled entry reads
-   worse than one complete one.
+1. **Job Tracker is committed and tested, not yet deployed.** The CV template
+   asks for "deployed or committed" — committed is true today. Do not write
+   "deployed" or "live" until the Worker is actually reachable. A reviewer who
+   clicks a dead link is worse off than one who clicks a repository.
+2. **1099-INT is missing its engineering-decision bullet.** The other entry has
+   one and it is the bullet that gets you asked about the work in an interview.
+   Add one line: a real choice you made and why. It is your project and your
+   decision to describe — writing it for you would put words in your mouth that
+   you would then have to defend.
+3. **Both entries must be explainable end to end without help.** That is the
+   template's own bar. If any bullet above is not something you could talk
+   through for five minutes, cut it.

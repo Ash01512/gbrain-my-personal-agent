@@ -39,7 +39,7 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
   duplicates with a 409 so the count cannot inflate.
 - Stack: TypeScript, Cloudflare Workers, Supabase (Postgres, PostgREST), Vitest.
   125 tests, no network required. CI gates deployment on the suite passing.
-- github.com/Ash01512/job-tracker-agent
+- github.com/Ash01512/gbrain-my-personal-agent
 
 **1099-INT Check** | Independent Project | 2026
 
@@ -52,6 +52,10 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
 
 ## Before you send it
 
+0. **The repository URL above is the one that resolves today.** If you rename
+   `gbrain-my-personal-agent` to `job-tracker-agent` in GitHub Settings, change
+   this line and the Worker README to match — a CV link that 404s costs more
+   than an unfashionable repository name.
 1. **Job Tracker is committed and tested, not yet deployed.** The CV template
    asks for "deployed or committed" — committed is true today. Do not write
    "deployed" or "live" until the Worker is actually reachable. A reviewer who

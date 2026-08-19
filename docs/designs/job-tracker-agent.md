@@ -93,10 +93,13 @@ already maps the resulting `23505` to a 409. A re-run cannot double-queue a role
 
 ## Open Questions
 
-1. **Scoring rubric.** What makes a role an 8 rather than a 5? Needs to be written
-   down explicitly, or the score is unfalsifiable and you stop trusting it by week two.
-2. **Volume.** How many queued roles per day is useful before the queue becomes
-   another thing to ignore? Suggest capping the daily queue and tuning from there.
+1. ~~**Scoring rubric.**~~ ANSWERED in `docs/agent-loop.md`: additive 0-10 across
+   domain fit, seniority, location, compensation and signal quality, every band
+   anchored to something checkable in the posting so the number can be argued
+   with. Queue threshold 6; letters drafted at 8.
+2. ~~**Volume.**~~ ANSWERED: at most 10 queued per run, best first, and the run
+   reports how many cleared the bar but were dropped by the cap — a silently
+   truncated queue reads as "that was all there was".
 3. **Reply detection.** Gmail is connected, so the agent could move an application to
    `screening` when a recruiter replies. Valuable, but it is a second loop — worth
    deferring until the first one is proven.
@@ -141,9 +144,10 @@ itself distributable — the repo carries its prompt and setup instructions inst
    `GET /api/stats/daily` (per-day counts). Named `apply`, not `approve`.
 4. ~~**Dashboard**~~ DONE — queue sorted by fit with the rationale on hover, an
    Apply button that opens the posting and records it, and a daily counter.
-5. **Routine:** daily prompt — search, score against the CV, draft, POST to
-   `/api/queue`. Start manual, schedule once the output is worth reading.
-   *This is the remaining piece.*
+5. ~~**Routine**~~ SPECCED — `docs/agent-loop.md` carries the search tracks, the
+   scoring rubric, the volume cap, and the run prompt verbatim. That document
+   also answers Open Questions 1 and 2 below. Creating the Routine itself is a
+   settings action and is the one step left.
 6. **Seed `cv_versions`** with the real CV so drafts have something to ground in.
 7. **Set `APP_TIMEZONE`** to `Asia/Dubai` on the Worker, or the daily count rolls
    over at 04:00 local.

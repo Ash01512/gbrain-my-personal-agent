@@ -67,20 +67,50 @@ the apply link. So the loop is:
    You complete the form there.
 4. `/api/stats/daily` counts what was actually recorded.
 
-Two guards keep the daily number honest:
+Guards that keep the daily number honest:
 
 - **Re-applying is a 409.** Clicking apply twice cannot inflate the count.
-- **Only the apply endpoint may set `applied_on`.** The agent has no path to it.
+- **Re-applying never moves a date.** A row applied to last week and reverted
+  to `saved` keeps its original `applied_on`, so history cannot be shuffled
+  onto today.
+- **The queue endpoint cannot claim an application.** `parseQueueItem` forces
+  `status` to `saved` and strips `applied_on`, so the agent's normal path
+  cannot mark anything sent.
+- **Changing status to `applied` anywhere stamps the date**, including the
+  dashboard dropdown. Otherwise an application would be invisible to the daily
+  count while still showing as applied.
 
-The count therefore means "applications you sent", not "roles the agent found".
+**What is not guarded:** every caller shares one `API_TOKEN`, so anything
+holding it can `PATCH /api/applications/:id` with an arbitrary `applied_on` and
+inflate the count. This is a single-user trust model, not an enforced boundary.
+Splitting the agent onto a write-restricted token would fix it and is not built.
+
+The count means "applications recorded as sent", not "roles the agent found".
 A tracker that inflates that number is worse than no tracker.
+
+## Timezone
+
+`APP_TIMEZONE` (optional, IANA name such as `Asia/Dubai`) decides which calendar
+day an application belongs to. It defaults to UTC — which for a UTC+4 user files
+anything sent after 20:00 local under the next day and resets "applied today" at
+04:00 local. Set it:
+
+```bash
+npx wrangler secret put APP_TIMEZONE   # or add as a plain variable
+```
+
+An invalid zone falls back to UTC rather than failing the request.
 
 ## Database migration
 
-`migrations/0001_add_matching.sql` adds `match_score`, `match_rationale` and
-`cv_version_id`, a 0-10 check constraint, and the two indexes the queue and the
-daily count read. Apply it in the Supabase SQL editor before first use. It is
-safe to re-run.
+Run both in order in the Supabase SQL editor. Both are guarded and safe to
+re-run against the existing project.
+
+- `migrations/0000_init.sql` — baseline: the three tables, RLS, and the
+  **unique index on `job_url`** that the queue's 409 dedupe depends on.
+- `migrations/0001_add_matching.sql` — `match_score`, `match_rationale`,
+  `cv_version_id`, the 0-10 check constraint, and the indexes the queue
+  ordering and daily rollup read.
 
 ### Status values
 
@@ -161,7 +191,7 @@ npm run typecheck
 npm test
 ```
 
-56 tests cover schema validation, route matching, query building, the auth
+66 tests cover schema validation, route matching, query building, the auth
 comparison, and the Supabase error mapping. They stub `fetch`, so they need no
 network and no database.
 

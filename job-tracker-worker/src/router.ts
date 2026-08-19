@@ -84,18 +84,27 @@ export function matchRoute(
   return null
 }
 
-/** Translates ?status=&company=&q=&limit=&offset= into PostgREST filters. */
-export function listOptionsFromSearch(search: URLSearchParams) {
+/**
+ * Translates ?status=&company=&q=&limit=&offset= into PostgREST filters.
+ *
+ * `supportsQueue` gates the queue-mode columns. Only `applications` has
+ * `status` and `match_score`, so applying queue semantics elsewhere would
+ * send PostgREST a filter on a column that does not exist and surface a raw
+ * 400 to the caller.
+ */
+export function listOptionsFromSearch(search: URLSearchParams, supportsQueue = true) {
   const filters: Record<string, string> = {}
 
   const status = search.get('status')
   if (status) filters.status = `eq.${status}`
 
-  const company = search.get('company')
+  // company and role exist only on applications, so these filters are gated
+  // for the same reason queue mode is.
+  const company = supportsQueue ? search.get('company') : null
   if (company) filters.company = `ilike.*${company}*`
 
   // Free-text across the two columns worth searching.
-  const q = search.get('q')
+  const q = supportsQueue ? search.get('q') : null
   if (q) filters.or = `(company.ilike.*${q}*,role.ilike.*${q}*)`
 
   const limit = clampInt(search.get('limit'), 50, 1, 200)
@@ -103,7 +112,7 @@ export function listOptionsFromSearch(search: URLSearchParams) {
 
   // ?queue=true is the review list: everything not yet sent, best fit first.
   // An explicit status filter wins, so ?queue=true&status=applied still works.
-  const queueMode = search.get('queue') === 'true'
+  const queueMode = supportsQueue && search.get('queue') === 'true'
   if (queueMode && !filters.status) filters.status = 'eq.saved'
 
   const defaultOrder = queueMode

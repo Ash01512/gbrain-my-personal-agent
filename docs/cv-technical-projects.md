@@ -20,7 +20,7 @@ Every claim below is checkable against the repository. Nothing is aspirational.
   requires a shared token, and a missing token fails closed rather than leaving
   the database exposed to anyone who finds the URL.
 - Stack: TypeScript, Cloudflare Workers, Supabase (Postgres, PostgREST), Vitest.
-  56 tests, no network required.
+  66 tests, no network required.
 - https://github.com/Ash01512/job-tracker-agent
 
 ---

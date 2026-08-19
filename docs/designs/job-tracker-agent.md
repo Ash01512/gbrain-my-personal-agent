@@ -119,18 +119,30 @@ itself distributable — the repo carries its prompt and setup instructions inst
 ## Next Steps
 
 1. **Fill the two CV placeholders.** Blocker. The `TECHNICAL PROJECTS` section is
-   filled by this project — a Worker with Supabase, RLS, 56 tests, and a real
+   filled by this project — a Worker with Supabase, RLS, 66 tests, and a real
    security decision to explain end to end. Say "deployed" only once it is.
-2. **Migration:** add `match_score`, `match_rationale`, and `cv_version_id` to
-   `applications`. Queued roles use the existing `saved` status, so the CHECK
-   constraint does not change.
-3. **Worker:** add `POST /api/queue` (agent writes a scored, drafted candidate) and
-   `POST /api/applications/:id/approve` (marks applied, stamps `applied_on`).
-4. **Dashboard:** queue view sorted by score, showing the drafted letter, with
-   approve / reject and the apply link.
-5. **Routine:** daily prompt — search, score against the CV, draft, POST. Start
-   manual, schedule once the output is worth reading.
+2. ~~**Migration**~~ DONE — `migrations/0000_init.sql` (baseline plus the
+   `job_url` unique index the dedupe depends on) and `0001_add_matching.sql`
+   (`match_score`, `match_rationale`, `cv_version_id`, 0-10 check, indexes).
+   Queued roles reuse the `saved` status, so the CHECK constraint is unchanged.
+   **Run both in the Supabase SQL editor before first use.**
+3. ~~**Worker**~~ DONE — `POST /api/queue` (agent intake, scored candidate),
+   `POST /api/applications/:id/apply` (records the send, returns the apply URL),
+   `GET /api/stats/daily` (per-day counts). Named `apply`, not `approve`.
+4. ~~**Dashboard**~~ DONE — queue sorted by fit with the rationale on hover, an
+   Apply button that opens the posting and records it, and a daily counter.
+5. **Routine:** daily prompt — search, score against the CV, draft, POST to
+   `/api/queue`. Start manual, schedule once the output is worth reading.
+   *This is the remaining piece.*
 6. **Seed `cv_versions`** with the real CV so drafts have something to ground in.
+7. **Set `APP_TIMEZONE`** to `Asia/Dubai` on the Worker, or the daily count rolls
+   over at 04:00 local.
+
+### Known gap
+
+Every caller shares one `API_TOKEN`, so anything holding it can PATCH an
+arbitrary `applied_on` and inflate the daily count. Single-user trust model, not
+an enforced boundary. A write-restricted agent token would close it.
 
 ## What I noticed about how you think
 

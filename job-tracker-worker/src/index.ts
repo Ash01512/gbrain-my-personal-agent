@@ -17,7 +17,32 @@ export interface Env {
   SUPABASE_URL: string
   SUPABASE_SERVICE_ROLE_KEY: string
   API_TOKEN: string
+  /**
+   * IANA zone used to decide which calendar day an application belongs to,
+   * e.g. "Asia/Dubai". Defaults to UTC. Without it, an application sent at
+   * 01:30 in UTC+4 files under the previous day and "applied today" resets
+   * at 04:00 local.
+   */
+  APP_TIMEZONE?: string
 }
+
+/** Today's date in the configured zone, as YYYY-MM-DD. */
+export function localDate(timeZone: string | undefined, now = new Date()): string {
+  try {
+    // en-CA formats as YYYY-MM-DD, which is what Postgres `date` wants.
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timeZone || 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now)
+  } catch {
+    // An invalid zone must not take the endpoint down; fall back to UTC.
+    return now.toISOString().slice(0, 10)
+  }
+}
+
+const DAILY_ROW_LIMIT = 1000
 
 const PARSERS = {
   applications: parseApplication,
@@ -62,7 +87,7 @@ export default {
 
     try {
       const db = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
-      return await handle(match, request, url, db)
+      return await handle(match, request, url, db, localDate(env.APP_TIMEZONE))
     } catch (error) {
       if (error instanceof ValidationError) return json({ error: error.message }, 400)
       if (error instanceof SupabaseError) return json({ error: error.message }, error.status)
@@ -81,6 +106,7 @@ async function handle(
   request: Request,
   url: URL,
   db: Supabase,
+  today: string,
 ): Promise<Response> {
   if (match.name === 'stats') {
     // Tallied in the Worker rather than via a Postgres aggregate: the row
@@ -101,13 +127,15 @@ async function handle(
       select: 'applied_on',
       filters: { applied_on: 'not.is.null' },
       order: 'applied_on.desc',
-      limit: 1000,
+      limit: DAILY_ROW_LIMIT,
     })
-    const today = new Date().toISOString().slice(0, 10)
     const series = tallyDaily(rows, today)
+    // Say so rather than freezing at the cap and looking like a real total.
+    const truncated = rows.length >= DAILY_ROW_LIMIT
     return json({
       today: series[0]?.count ?? 0,
       total: rows.length,
+      truncated,
       days: series,
     })
   }
@@ -136,7 +164,10 @@ async function handle(
     }
     const row = await db.update<Application>(table, id, {
       status: 'applied',
-      applied_on: new Date().toISOString().slice(0, 10),
+      // Keep the original date if this row was applied to before and later
+      // moved back to saved, so re-applying cannot shuffle a past
+      // application onto today and distort the history.
+      applied_on: current.applied_on ?? today,
     })
     // The apply link is what the human opens. Submission is their action.
     return json({ data: row, apply_url: current.job_url })
@@ -144,7 +175,8 @@ async function handle(
 
   switch (match.name) {
     case 'list': {
-      const rows = await db.list(table, listOptionsFromSearch(url.searchParams))
+      const options = listOptionsFromSearch(url.searchParams, table === 'applications')
+      const rows = await db.list(table, options)
       return json({ data: rows, count: rows.length })
     }
     case 'create': {
@@ -156,8 +188,20 @@ async function handle(
       return row ? json({ data: row }) : json({ error: 'not found' }, 404)
     }
     case 'update': {
+      const id = assertUuid(match.id!)
       const values = parse(await request.json(), true)
-      const row = await db.update(table, assertUuid(match.id!), values)
+      // The dashboard's status dropdown can move a row straight to `applied`.
+      // Without stamping the date here it would never reach the daily count,
+      // and the "applied" chip would contradict "applied total" next to it.
+      if (
+        table === 'applications' &&
+        values.status === 'applied' &&
+        values.applied_on === undefined
+      ) {
+        const current = await db.getById<Application>(table, id)
+        values.applied_on = current?.applied_on ?? today
+      }
+      const row = await db.update(table, id, values)
       return row ? json({ data: row }) : json({ error: 'not found' }, 404)
     }
     case 'delete': {

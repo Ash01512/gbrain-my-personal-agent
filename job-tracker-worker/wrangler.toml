@@ -13,10 +13,11 @@ compatibility_date = "2026-08-01"
 # The service-role key bypasses RLS, which is why the Worker requires
 # API_TOKEN on every /api route. See README "Security model".
 
-# Uncomment to file applications under the right calendar day. Without it the
-# daily count rolls over at 04:00 local for a UTC+4 user.
-# [vars]
-# APP_TIMEZONE = "Asia/Dubai"
+# Which calendar day an application belongs to. Not a secret, so it lives here
+# rather than in `wrangler secret put`. Without it the daily count runs on UTC
+# and rolls over at 04:00 local for a UTC+4 user.
+[vars]
+APP_TIMEZONE = "Asia/Dubai"
 
 [observability]
 enabled = true

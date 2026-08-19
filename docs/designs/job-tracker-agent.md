@@ -124,7 +124,7 @@ itself distributable — the repo carries its prompt and setup instructions inst
 ## Next Steps
 
 1. **Fill the two CV placeholders.** Blocker. The `TECHNICAL PROJECTS` section is
-   filled by this project — a Worker with Supabase, RLS, 130 tests, and a real
+   filled by this project — a Worker with Supabase, RLS, 140 tests, and a real
    security decision to explain end to end. Say "deployed" only once it is.
 2. ~~**Migration**~~ DONE — `migrations/0000_init.sql` (baseline plus the
    `job_url` unique index the dedupe depends on), `0001_add_matching.sql`
@@ -181,7 +181,7 @@ adversarial red team and a test-coverage audit. What changed:
 - **The dashboard was laid out as a CRUD tool.** The queue now leads, the match
   rationale is visible text rather than a hover tooltip, apply discloses what it
   does and offers an undo, and the seven-column table becomes cards on a phone.
-- **The test suite never constructed a `Request`.** It does now: 130 tests, with
+- **The test suite never constructed a `Request`.** It does now: 140 tests, with
   the fetch handler, the apply state machine and the client-side helpers covered.
 
 ## What I noticed about how you think

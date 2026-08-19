@@ -99,6 +99,13 @@ a score can be argued with — which is the only kind of score worth keeping.
 | 0.5 | Agency posting that names its client |
 | 0 | Anonymous listing, or a description that is a keyword list with no scope |
 
+**Domain floor: a role scoring under 2 on domain fit is never queued, whatever
+it totals.** Location and seniority are worth four points between them, so
+without this a Dubai site-engineering role at the right level reaches 6.0 and
+lands in the queue — a step backwards presented as a match. Domain fit is the
+only axis that answers "is this the right job"; the rest only adjust how good
+an instance of it this is.
+
 **Hard zeros**, regardless of everything above: outside the GCC with no remote
 option; commission-only or sales-quota compensation; a stated nationality or
 visa requirement he does not meet; or a required licence or certification he
@@ -116,6 +123,45 @@ Write the rationale as the *reason for the number*, not a summary of the
 posting: "4 domain — owns the CMMS data model; 2 seniority — manages three
 vendors; 2 UAE onsite; 0.5 comp not stated; 1 employer-posted" beats "Great fit
 for facilities role."
+
+### Worked examples
+
+Illustrative, not real postings — they exist so the rubric can be argued with
+before it is trusted, and so a reviewer can see what the agent actually sends.
+
+| Posting | Domain | Sen | Loc | Comp | Sig | Total | Outcome |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Asset Data Lead, aviation group, Dubai, employer-posted, owns the CMMS data model | 4 | 2 | 2 | 0.5 | 1 | **9.5** | queue + draft letter |
+| Reliability Engineer, utility, Abu Dhabi, condition-based maintenance, AED 55k stated | 4 | 1 | 2 | 1 | 1 | **9.0** | queue + draft letter |
+| Head of Facilities, retail group, Sharjah, KPI reporting named | 3 | 2 | 2 | 0.5 | 0.5 | **8.0** | queue + draft letter |
+| Facilities Manager, no data component, Dubai, agency posting | 2 | 2 | 2 | 0.5 | 0.5 | **7.0** | queue, no letter |
+| Mechanical Site Engineer, Dubai, employer-posted | **1** | 2 | 2 | 0.5 | 1 | 6.5 | **not queued — domain floor** |
+| Asset Data Manager, Riyadh, no remote | 4 | 2 | 1 | 0.5 | 1 | **8.5** | queue, no letter |
+| Asset Analytics Lead, London, no remote | 4 | 2 | **0** | 1 | 1 | **0** | **not queued — hard zero** |
+
+The fifth row is the one to check the floor against: it clears the numeric
+threshold and is still wrong, because Dubai plus the right seniority is worth
+four points before the job itself is considered.
+
+### What the agent sends
+
+For the first row, the exact `POST /api/queue` body:
+
+```json
+{
+  "company": "Emirates Group",
+  "role": "Asset Data Lead",
+  "location": "Dubai, UAE",
+  "job_url": "https://ae.indeed.com/viewjob?jk=abc123",
+  "source": "indeed",
+  "match_score": 9.5,
+  "match_rationale": "4 domain — owns the CMMS data model and the condition-based maintenance regime; 2 seniority — Head-level, owns vendor budget; 2 UAE onsite; 0.5 comp not stated; 1 employer-posted with full scope"
+}
+```
+
+No `status`, no `applied_on` — and if the agent sent them anyway, the Worker
+strips them. See `test/agent-contract.test.ts`, which drives these exact
+payloads through the real handler.
 
 ## Volume
 

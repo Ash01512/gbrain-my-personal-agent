@@ -1,0 +1,23 @@
+# Deploy config for Cloudflare's Git integration, and only for that.
+#
+# It exists at the repository root so the dashboard's DEFAULTS work: no root
+# directory, no build command, no deploy command. The root-directory field is
+# absent from some dashboard versions, and setting it wrong produces a green
+# build that serves nothing — so the config comes to Cloudflare instead.
+#
+# job-tracker-worker/wrangler.toml is the one `npm run dev` and `npm run
+# deploy` use. test/wrangler-sync.test.ts fails the build if the two disagree
+# on the name, the compatibility date, or the timezone.
+#
+# No secrets here. SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY and API_TOKEN are
+# set once on the Worker itself.
+
+name = "job-tracker-worker"
+main = "job-tracker-worker/src/index.ts"
+compatibility_date = "2026-08-01"
+
+[vars]
+APP_TIMEZONE = "Asia/Dubai"
+
+[observability]
+enabled = true

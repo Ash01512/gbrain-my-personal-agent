@@ -26,7 +26,7 @@ Then, in order:
 
 ```bash
 SUPABASE_DB_URL='postgresql://...' npm run migrate   # 1. schema
-npm run check                                        # 2. typecheck + 140 tests
+npm run check                                        # 2. typecheck + 145 tests
 npm run dev                                          # 3. http://localhost:8787
 npm run deploy                                       # 4. production + smoke test
 ```
@@ -236,22 +236,14 @@ a repository that is in fact deploying fine.
    from the repository name, and the build fails if it does not match the
    `name` in `wrangler.toml`. A Worker cannot be renamed afterwards, so this is
    the only chance to get it right
-4. Set the build and deploy commands. **Some dashboard versions have no root
-   directory field in this flow** — do not hunt for it, `cd` does the same job:
-
-   | Field | Value |
-   | --- | --- |
-   | Build command | `cd job-tracker-worker && npm ci` |
-   | Deploy command | `cd job-tracker-worker && npx wrangler deploy` |
-
-   These run through `/bin/sh`, so shell syntax works. Anything that is not a
-   command fails as `/bin/sh: 1: <word>: not found`. If a **Root directory**
-   field *is* offered, set it to `job-tracker-worker` and drop the `cd`s.
+4. **Leave every build field alone.** No root directory, no build command, the
+   default `npx wrangler deploy`. The `wrangler.toml` at the repository root
+   exists precisely so the defaults work — it points `main` into the
+   subdirectory, and the Worker has no runtime npm dependencies, so there is
+   nothing to install
 5. **Deploy from `main`.** On a non-production branch Cloudflare runs
    `wrangler versions upload`, which uploads a version without putting it live
-   — the build goes green and nothing serves. Either deploy from the production
-   branch, or set the non-production deploy command to the same `wrangler
-   deploy` line
+   — the build goes green and nothing serves
 6. Then add the secrets under **Settings → Variables and Secrets**, all three
    as **Secret** type: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
    `API_TOKEN`. `APP_TIMEZONE` is already set from `wrangler.toml` and does not
@@ -355,7 +347,7 @@ npm run typecheck
 npm test
 ```
 
-140 tests. Most cover the pure helpers — schema validation, route matching,
+145 tests. Most cover the pure helpers — schema validation, route matching,
 query building, the auth comparison, the Supabase error mapping — and
 `test/worker.test.ts` drives the fetch handler itself, which is where the auth
 gate, the error mapping and the `applied_on` rules actually compose.

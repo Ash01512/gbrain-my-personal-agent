@@ -38,7 +38,7 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
   sent; the apply endpoint records what the user actually submits and rejects
   duplicates with a 409 so the count cannot inflate.
 - Stack: TypeScript, Cloudflare Workers, Supabase (Postgres, PostgREST), Vitest.
-  140 tests, no network required, run in CI on every push and pull request.
+  145 tests, no network required, run in CI on every push and pull request.
 - github.com/Ash01512/gbrain-my-personal-agent
 
 **1099-INT Check** | Independent Project | 2026

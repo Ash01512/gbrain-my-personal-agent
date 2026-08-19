@@ -9,11 +9,14 @@
   },
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "deploy": "./scripts/deploy.sh",
+    "deploy:raw": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "migrate": "./scripts/migrate.sh",
+    "smoke": "./scripts/smoke-test.sh"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260811.1",

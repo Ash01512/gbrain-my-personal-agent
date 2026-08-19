@@ -7,33 +7,51 @@ config, no static asset hosting.
 ## Quickstart
 
 Every command runs from `job-tracker-worker/`, not the repository root. Node 22
-or newer (wrangler requires it).
+or newer (wrangler requires it — `.nvmrc` pins it).
 
 ```bash
 git clone https://github.com/Ash01512/gbrain-my-personal-agent.git
 cd gbrain-my-personal-agent/job-tracker-worker
 npm install
+cp .dev.vars.example .dev.vars          # then fill in the three values
 ```
 
-1. **Database first.** In the Supabase SQL editor run `migrations/0000_init.sql`,
-   then `0001_add_matching.sql`, then `0002_verify.sql`. The third one changes
-   nothing and tells you whether the first two landed. Read the header of
-   `0000` before running it against a database that already holds data.
-   Skipping `0001` makes `POST /api/queue` and `?queue=true` fail with a raw
-   PostgREST 400; skipping `0000` removes the unique index, and the agent
-   silently re-queues every role on every run.
-2. **Local secrets.** `cp .dev.vars.example .dev.vars`, then fill in the
-   Supabase URL, the service-role key, and a token from `openssl rand -hex 32`.
-3. **Run it.** `npm run dev`, open http://localhost:8787, paste the token into
-   the token field, press Connect.
-4. **Check it.** `npm run typecheck && npm test`.
-5. **Deploy.** Pick exactly one path from [Deploy](#deploy) below — connecting
-   both double-deploys.
-6. **Smoke test the deployment**, which needs the token, unlike `/api/health`:
+`.dev.vars` holds the Supabase URL, the service-role key, and an API token from
+`openssl rand -hex 32`. It is gitignored, it is what `npm run dev` reads, and
+`npm run deploy` pushes the same three values to production — so they are typed
+once rather than retyped into a dashboard form where a trailing space is
+invisible.
 
-   ```bash
-   curl -sS -H "Authorization: Bearer $API_TOKEN" https://<worker-host>/api/applications
-   ```
+Then, in order:
+
+```bash
+SUPABASE_DB_URL='postgresql://...' npm run migrate   # 1. schema
+npm run check                                        # 2. typecheck + 125 tests
+npm run dev                                          # 3. http://localhost:8787
+npm run deploy                                       # 4. production + smoke test
+```
+
+1. **`npm run migrate`** applies `0000`, `0001` and `0002` in order, but checks
+   first: it refuses to run if duplicate `job_url` values would abort the unique
+   index, and it asks before enabling RLS, which is one-way in effect — the anon
+   key then reads zero rows and gets `200 []` rather than an error. The
+   connection string is in the Supabase dashboard under **Connect → Session
+   pooler**; use that one, not the direct connection, which is IPv6-only on the
+   free plan and simply hangs. Needs `psql`; if you would rather not install it,
+   paste the three files into the SQL editor in filename order instead.
+   Skipping `0001` makes `POST /api/queue` and `?queue=true` fail with a raw
+   PostgREST 400; skipping `0000` loses the unique index, and the agent silently
+   re-queues every role on every run.
+2. **`npm run deploy`** runs the checks, authenticates with Cloudflare if
+   needed, deploys, pushes the three secrets from `.dev.vars` on stdin so no
+   value reaches your shell history, **redeploys** so the new secrets apply to
+   the running version, and then smoke-tests what it just published. It stops
+   before deploying if `.dev.vars` still holds placeholders.
+3. **`npm run smoke <url>`** on its own re-runs just the verification: config,
+   the auth boundary, a real PostgREST round trip, and the two endpoints that
+   fail loudly if a migration was missed. Needs `API_TOKEN` in the environment.
+
+The dashboard's own flow: open it, paste the API token, press Connect.
 
 Everything to do with the scheduled agent that fills the queue lives in
 `docs/designs/job-tracker-agent.md`, one directory up.
@@ -222,19 +240,29 @@ half-configured deployment from a working one.
 the scheduled agent loop, and a Worker already serves the dashboard HTML directly.
 See `docs/designs/job-tracker-agent.md`.
 
-### Setting the same thing from the CLI
-
-Equivalent, if you would rather not use the dashboard. Do not do both for the
-same Worker on the same day without checking which one won.
+### Or `npm run deploy`, which does the same thing without the clicking
 
 ```bash
 cd job-tracker-worker
-npm install
+npm run deploy
+```
+
+It opens a browser once for `wrangler login`, then needs nothing else: checks,
+deploy, secrets from `.dev.vars`, redeploy, smoke test. Use it *instead of* the
+dashboard route above for the first deploy, not as well — either creates the
+Worker, and a Worker created by `wrangler deploy` has no Git connection, so
+pushes will not redeploy it until you connect one.
+
+The equivalent by hand, if you want to see what it does:
+
+```bash
 npx wrangler login                                  # interactive, opens a browser
 npx wrangler secret put SUPABASE_URL                # https://<ref>.supabase.co
 npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY   # Settings > API > service_role
 npx wrangler secret put API_TOKEN                   # openssl rand -hex 32
-npx wrangler deploy
+npx wrangler deploy                                 # again — secrets set after a
+                                                    # deploy do not reach the
+                                                    # running version
 ```
 
 `APP_TIMEZONE` is not a secret — uncomment the `[vars]` block in `wrangler.toml`
@@ -242,11 +270,24 @@ rather than using `secret put`.
 
 ### Confirming it worked
 
-`/api/health` reports which variables are set, never their values, and answers
-503 rather than 200 if any is missing. It does not touch Supabase, so passing it
-proves configuration and nothing more. Then run the authenticated smoke test in
-[Quickstart](#quickstart) — that is the first thing that actually exercises the
-credentials against the database.
+```bash
+API_TOKEN='...' npm run smoke https://<worker>.workers.dev
+```
+
+Ten checks, and each failure names the likely cause rather than just a status
+code. `/api/health` alone is not enough: it reports which variables are set,
+never their values, and never touches Supabase — so it proves configuration and
+nothing more. The smoke test also asserts the things that would be worst to get
+wrong in production:
+
+- an unauthenticated request is refused, and so is a wrong token
+- no key material appears in any response a stranger can reach
+- an authenticated list actually round-trips to PostgREST
+- `?queue=true` and `/api/stats/daily` work, which they do not if `0001` was
+  skipped — otherwise that stays invisible until the agent posts its first
+  candidate
+- a search containing a comma returns 200, not the 400 the unquoted filter
+  grammar used to produce
 
 ## Local development
 

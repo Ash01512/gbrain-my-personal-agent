@@ -70,12 +70,44 @@ if [ -n "$missing" ]; then
 fi
 echo "    .dev.vars has all three values"
 
-if ! $WRANGLER whoami >/dev/null 2>&1; then
-  echo
-  echo "==> Authenticating with Cloudflare (opens a browser, one time)"
-  $WRANGLER login
+# Authentication is checked BEFORE the test suite. It is the one failure that
+# is certain rather than probable, and discovering it after a full run wastes
+# the time it was going to waste anyway.
+#
+# `wrangler whoami` exits 0 whether or not you are logged in, so the exit code
+# says nothing — parse what it actually printed. An earlier version of this
+# script trusted the status, never called `wrangler login`, and reported
+# "cloudflare: authenticated" about a logged-out session.
+authed() {
+  ! $WRANGLER whoami 2>&1 | grep -qi 'not authenticated'
+}
+
+if ! authed; then
+  if [ -t 0 ] && [ -t 1 ]; then
+    echo
+    echo "==> Authenticating with Cloudflare (opens a browser, one time)"
+    $WRANGLER login
+    if ! authed; then
+      echo "    !! login did not complete — nothing was deployed" >&2
+      exit 1
+    fi
+  else
+    cat >&2 <<'MSG'
+    !! Not authenticated with Cloudflare, and this is not an interactive
+       terminal — the browser login cannot run here. Either:
+
+         npx wrangler login          in a real terminal, then re-run this
+       or
+         export CLOUDFLARE_API_TOKEN=...    ("Edit Cloudflare Workers" token)
+
+       Stopping now rather than after the test suite.
+MSG
+    exit 1
+  fi
 fi
-echo "    cloudflare: $($WRANGLER whoami 2>/dev/null | grep -i 'associated with the email' | head -n1 || echo authenticated)"
+account=$($WRANGLER whoami 2>/dev/null |
+  grep -iE 'associated with the email|account name' | head -n1 | tr -s ' ' || true)
+echo "    cloudflare: ${account:-authenticated}"
 
 echo
 echo "==> Checks (never deploy something the suite has not seen)"

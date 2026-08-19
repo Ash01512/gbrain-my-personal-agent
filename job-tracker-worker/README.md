@@ -228,20 +228,42 @@ typechecks and tests but deliberately does **not** deploy: with both paths
 connected, every push deploys twice and the run without an API token goes red on
 a repository that is in fact deploying fine.
 
-1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Connect to Git**
-2. Pick `Ash01512/gbrain-my-personal-agent`
-3. Set **root directory** to `job-tracker-worker` — the Worker is not at the
-   repository root. This is the step that is easy to miss and the reason the
-   build fails with "no package.json" if you do
-4. Deploy, then add the secrets under **Settings → Variables and Secrets**.
-   Three are required, as **Secret** type: `SUPABASE_URL`,
-   `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`. Add `APP_TIMEZONE` as a plain
-   **Text** variable — it is not a secret, and without it the daily count rolls
-   over at 04:00 local for a UTC+4 user
-5. Confirm the variables are live rather than staged. The dashboard may hold
+1. Cloudflare dashboard → **Workers & Pages** → **Create** → **Import a
+   repository**. If the sidebar has been renamed, this link skips the
+   navigation: `https://dash.cloudflare.com/?to=/:account/workers-and-pages`
+2. Pick `Ash01512/gbrain-my-personal-agent`, branch `main`
+3. **Project name must be `job-tracker-worker`.** The dashboard pre-fills it
+   from the repository name, and the build fails if it does not match the
+   `name` in `wrangler.toml`. A Worker cannot be renamed afterwards, so this is
+   the only chance to get it right
+4. Set the build and deploy commands. **Some dashboard versions have no root
+   directory field in this flow** — do not hunt for it, `cd` does the same job:
+
+   | Field | Value |
+   | --- | --- |
+   | Build command | `cd job-tracker-worker && npm ci` |
+   | Deploy command | `cd job-tracker-worker && npx wrangler deploy` |
+
+   These run through `/bin/sh`, so shell syntax works. Anything that is not a
+   command fails as `/bin/sh: 1: <word>: not found`. If a **Root directory**
+   field *is* offered, set it to `job-tracker-worker` and drop the `cd`s.
+5. **Deploy from `main`.** On a non-production branch Cloudflare runs
+   `wrangler versions upload`, which uploads a version without putting it live
+   — the build goes green and nothing serves. Either deploy from the production
+   branch, or set the non-production deploy command to the same `wrangler
+   deploy` line
+6. Then add the secrets under **Settings → Variables and Secrets**, all three
+   as **Secret** type: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+   `API_TOKEN`. `APP_TIMEZONE` is already set from `wrangler.toml` and does not
+   need adding
+7. Confirm the variables are live rather than staged. The dashboard may hold
    changes behind a **Deploy** button depending on the UI version, so do not
    assume — `/api/health` is the definitive answer: it returns 503 while any of
    the three is missing and 200 once all are set
+
+Signs the build is doing the right thing: `Installing` takes seconds rather than
+milliseconds — 251ms with "no dependencies detected" means it never found
+`package.json` — and the deploy step reports `Total Upload: ~41 KiB`.
 
 Every push to the connected branch redeploys. Free plan covers this.
 

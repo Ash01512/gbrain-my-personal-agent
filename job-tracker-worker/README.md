@@ -213,6 +213,16 @@ so a bad value returns a 400 naming the field instead of a Postgres error.
 
 ## Deploy
 
+> **Not from a Claude Code web session.** That environment's network policy
+> answers 403 to CONNECT for every host this needs: `api.cloudflare.com`,
+> `dash.cloudflare.com`, `workers.cloudflare.com`, `*.workers.dev`, and
+> `*.supabase.co`. So an agent in that environment cannot deploy the Worker,
+> cannot reach Supabase, and cannot even smoke-test a Worker you deployed
+> yourself — no credential changes that. Run the deploy and the smoke test from
+> a local terminal, or widen the environment's network policy first. Verified
+> 2026-08-19 against `$HTTPS_PROXY/__agentproxy/status`, which logs each denial
+> by host.
+
 Cloudflare's Git integration owns deployment. `.github/workflows/check-worker.yml`
 typechecks and tests but deliberately does **not** deploy: with both paths
 connected, every push deploys twice and the run without an API token goes red on

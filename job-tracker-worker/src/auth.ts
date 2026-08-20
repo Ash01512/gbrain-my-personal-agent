@@ -19,7 +19,7 @@ export function presentedToken(headers: Headers): string | null {
   if (bearer?.toLowerCase().startsWith('bearer ')) {
     return bearer.slice(7).trim()
   }
-  return headers.get('x-api-token')
+  return headers.get('x-api-token')?.trim() ?? null
 }
 
 export function isAuthorized(headers: Headers, expected: string | undefined): boolean {
@@ -28,5 +28,11 @@ export function isAuthorized(headers: Headers, expected: string | undefined): bo
   if (!expected) return false
   const presented = presentedToken(headers)
   if (!presented) return false
-  return safeEqual(presented, expected)
+  // Both sides trimmed. A secret pasted into a dashboard form picks up a
+  // trailing newline or space astonishingly easily, and the result is a token
+  // that looks identical to the one you copied and never matches — with
+  // nothing on screen to show why. Surrounding whitespace carries no meaning
+  // in a token, so dropping it costs nothing and removes a failure that is
+  // otherwise invisible.
+  return safeEqual(presented, expected.trim())
 }

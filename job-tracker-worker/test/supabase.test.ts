@@ -25,6 +25,30 @@ describe('buildQuery', () => {
   })
 })
 
+describe('a token that picked up whitespace still works', () => {
+  // Pasting a secret into a dashboard form very easily appends a newline. The
+  // token then looks identical to the one you copied and never matches, and
+  // the only symptom is "unauthorized" with nothing to explain it.
+  const headers = (token: string) => new Headers({ authorization: `Bearer ${token}` })
+  const TOKEN = 'a'.repeat(64)
+
+  it('tolerates whitespace around the stored secret', () => {
+    expect(isAuthorized(headers(TOKEN), `${TOKEN}\n`)).toBe(true)
+    expect(isAuthorized(headers(TOKEN), ` ${TOKEN} `)).toBe(true)
+    expect(isAuthorized(headers(TOKEN), `${TOKEN}\r\n`)).toBe(true)
+  })
+
+  it('tolerates whitespace around the presented token', () => {
+    expect(isAuthorized(new Headers({ 'x-api-token': ` ${TOKEN} ` }), TOKEN)).toBe(true)
+  })
+
+  it('still rejects a genuinely different token', () => {
+    expect(isAuthorized(headers('b'.repeat(64)), TOKEN)).toBe(false)
+    expect(isAuthorized(headers(TOKEN.slice(0, 63)), TOKEN)).toBe(false)
+    expect(isAuthorized(headers(''), TOKEN)).toBe(false)
+  })
+})
+
 describe('Supabase', () => {
   it('refuses to construct without configuration', () => {
     expect(() => new Supabase('', KEY)).toThrow(/SUPABASE_URL/)

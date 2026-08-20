@@ -26,7 +26,7 @@ Then, in order:
 
 ```bash
 SUPABASE_DB_URL='postgresql://...' npm run migrate   # 1. schema
-npm run check                                        # 2. typecheck + 147 tests
+npm run check                                        # 2. typecheck + 150 tests
 npm run dev                                          # 3. http://localhost:8787
 npm run deploy                                       # 4. production + smoke test
 ```
@@ -71,6 +71,10 @@ RLS entirely. That makes the Worker itself the security boundary:
 - A missing `API_TOKEN` **fails closed** — a deployment that forgot to set the
   secret refuses every request rather than serving the database to the internet.
 - Tokens are compared in constant time, so a wrong guess leaks no prefix.
+- Surrounding whitespace is trimmed from both sides before comparing. A secret
+  pasted into a dashboard form picks up a trailing newline more often than
+  anyone admits, and the failure it causes — every request 401s, both values
+  look identical on screen — is invisible and expensive.
 - The service-role key never leaves the Worker. The browser only ever sees
   `API_TOKEN`.
 - `/` and `/api/health` are unauthenticated. Health reports only whether each
@@ -355,7 +359,7 @@ npm run typecheck
 npm test
 ```
 
-147 tests. Most cover the pure helpers — schema validation, route matching,
+150 tests. Most cover the pure helpers — schema validation, route matching,
 query building, the auth comparison, the Supabase error mapping — and
 `test/worker.test.ts` drives the fetch handler itself, which is where the auth
 gate, the error mapping and the `applied_on` rules actually compose.

@@ -1,0 +1,43 @@
+name = "property-outreach-worker"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+# Deployed on its own, with `npm run deploy` from this directory.
+#
+# The repository-root wrangler.toml belongs to job-tracker-worker and drives
+# Cloudflare's Git integration for that Worker only. This one is deliberately
+# NOT wired into that, so a push cannot redeploy the outreach Worker by
+# accident — the thing that sends WhatsApp messages should go out when a human
+# runs the command, not when a commit lands.
+#
+# No secrets here. wrangler.toml is committed, so these are set with
+# `wrangler secret put` (production) or .dev.vars (local):
+#   SUPABASE_URL
+#   SUPABASE_SERVICE_ROLE_KEY
+#   API_TOKEN
+#   LETSBOT_API_KEY
+#
+# See README "Before the first real send" for LETSBOT_API_BASE and the
+# send-path fields, which are not secrets and live in [vars] below.
+
+[vars]
+APP_TIMEZONE = "Asia/Dubai"
+
+# LetsBot's own docs are at docs.letsbot.net. Confirm the base and path there
+# before flipping OUTREACH_LIVE on — see src/letsbot.ts for what is confirmed
+# and what is inferred.
+LETSBOT_API_BASE = "https://api.letsbot.net"
+LETSBOT_SEND_PATH = "/v1/messages"
+
+# The master switch. "false" makes every send a dry run that returns the exact
+# outbound payload without calling LetsBot. It ships false on purpose: a
+# misconfigured send path costs real messages against a real number, and a
+# number that sends one bad campaign does not get a second chance.
+OUTREACH_LIVE = "false"
+
+# How many messages one contact may receive in the rolling window below.
+OUTREACH_MAX_PER_CONTACT = "2"
+OUTREACH_WINDOW_DAYS = "30"
+
+[observability]
+enabled = true

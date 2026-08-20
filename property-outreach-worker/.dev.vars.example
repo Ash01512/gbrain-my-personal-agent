@@ -1,0 +1,17 @@
+# Copy to .dev.vars for `wrangler dev`. .dev.vars is gitignored; never commit
+# real values. In production these are set with `wrangler secret put`.
+
+# Supabase project holding the outreach tables (migrations/0000_init.sql).
+# The service-role key bypasses RLS, which is why API_TOKEN guards every
+# /api route — see README "Security model".
+SUPABASE_URL="https://YOUR-PROJECT.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="paste-the-service-role-key"
+
+# Shared token every /api request must present, as `Authorization: Bearer …`
+# or `X-API-Token`. Generate with: openssl rand -hex 32
+API_TOKEN="generate-a-long-random-string"
+
+# From the LetsBot dashboard once your WhatsApp Business Account is connected.
+# Sending stays a dry run until OUTREACH_LIVE is "true" in wrangler.toml, so
+# this can be left empty while you build.
+LETSBOT_API_KEY=""

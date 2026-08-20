@@ -15,3 +15,10 @@ API_TOKEN="generate-a-long-random-string"
 # Sending stays a dry run until OUTREACH_LIVE is "true" in wrangler.toml, so
 # this can be left empty while you build.
 LETSBOT_API_KEY=""
+
+# Path secret for LetsBot's inbound webhook, which cannot present API_TOKEN.
+# Generate with: openssl rand -hex 32
+# Then point LetsBot at https://<worker>/hooks/inbound/<this value>.
+# Without it, STOP replies are never recorded — the one failure here that
+# reliably ends a number.
+INBOUND_WEBHOOK_SECRET=""

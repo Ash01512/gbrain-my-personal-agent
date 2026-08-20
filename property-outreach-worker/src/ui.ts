@@ -44,8 +44,9 @@ var BLOCK_LABELS = {
   OPTED_OUT: 'They asked not to be contacted',
   INVALID_PHONE: 'Phone is not in E.164 format',
   TEMPLATE_MISSING: 'Template no longer exists',
+  TEMPLATE_REQUIRED: 'Needs an approved template — free-form is not sent',
   TEMPLATE_NOT_APPROVED: 'Template is not approved by Meta',
-  FREEFORM_OUTSIDE_WINDOW: 'Outside the 24h window — needs an approved template',
+  ALREADY_MESSAGED: 'This contact has already had their one message',
   UNSUPPORTED_CLAIM: 'Claims a past interaction that never happened',
   FREQUENCY_CAP: 'Contact has hit the message cap',
   EMPTY_BODY: 'Nothing to send',
@@ -72,7 +73,7 @@ function byUrgency(a, b) {
 }
 `
 
-export function dashboardHtml(live = false): string {
+export function dashboardHtml(live = false, autopilot = false): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -181,13 +182,22 @@ export function dashboardHtml(live = false): string {
     <span class="muted small">approval queue</span>
   </header>
 
-  <div class="mode ${live ? 'live' : 'dry'}">
+  <div class="mode ${live && autopilot ? 'live' : 'dry'}">
     ${
-      live
-        ? 'LIVE — approving and sending will deliver real WhatsApp messages.'
-        : 'Dry run — OUTREACH_LIVE is not "true", so Send returns the payload it <em>would</em> have posted and transmits nothing. Confirm that payload against docs.letsbot.net before going live.'
+      live && autopilot
+        ? 'LIVE + AUTOPILOT — the hourly cron is sending real WhatsApp messages on its own. This queue is a record of what it did, not a gate it waits on.'
+        : live
+          ? 'LIVE, autopilot off — nothing sends unless you press Send here. Set OUTREACH_AUTOPILOT to "true" to let the cron run it.'
+          : autopilot
+            ? 'Autopilot rehearsing — the cron runs hourly, selects real contacts and builds real payloads, but OUTREACH_LIVE is not "true" so nothing is transmitted. Read a few runs in the logs, then go live.'
+            : 'Dry run — nothing sends. Send returns the payload it <em>would</em> have posted, so you can confirm it against docs.letsbot.net before arming anything.'
     }
   </div>
+
+  <p class="muted small" style="margin:-6px 0 16px">
+    Opt-ins are collected at <a href="/optin">/optin</a> — that page is the only
+    way anyone enters the sendable list.
+  </p>
 
   <details class="panel" id="tokenPanel">
     <summary>API token</summary>

@@ -3,6 +3,10 @@
 
 export type RouteName =
   | 'ui'
+  | 'optin-form'
+  | 'optin-submit'
+  | 'inbound'
+  | 'run-campaign'
   | 'health'
   | 'stats'
   | 'queue'
@@ -18,12 +22,19 @@ export type RouteName =
   | 'update'
   | 'delete'
 
-export type Table = 'properties' | 'contacts' | 'message_templates' | 'outreach_messages'
+export type Table =
+  | 'properties'
+  | 'contacts'
+  | 'message_templates'
+  | 'outreach_messages'
+  | 'campaigns'
 
 export interface Match {
   name: RouteName
   table?: Table
   id?: string
+  /** Path-carried webhook secret, for the inbound route only. */
+  secret?: string
 }
 
 const COLLECTIONS: Record<string, Table> = {
@@ -31,6 +42,7 @@ const COLLECTIONS: Record<string, Table> = {
   contacts: 'contacts',
   templates: 'message_templates',
   outreach: 'outreach_messages',
+  campaigns: 'campaigns',
 }
 
 /**
@@ -44,6 +56,24 @@ export function matchRoute(
   const path = pathname.replace(/\/+$/, '') || '/'
 
   if (path === '/') return method === 'GET' ? { name: 'ui' } : 'method-not-allowed'
+
+  // Public, and deliberately outside /api: the people who use it do not have
+  // the API token. This page is the only way opt-ins enter the system, so
+  // without it the scheduler runs forever and sends nothing. See optin.ts.
+  if (path === '/optin') {
+    if (method === 'GET') return { name: 'optin-form' }
+    if (method === 'POST') return { name: 'optin-submit' }
+    return 'method-not-allowed'
+  }
+
+  // The provider's webhook cannot present API_TOKEN, so the secret rides in
+  // the path and is compared in constant time. Matched before the /api tree so
+  // a wrong-shaped secret 404s rather than hinting that the route exists.
+  const inbound = path.match(/^\/hooks\/inbound\/([A-Za-z0-9_-]{16,128})$/)
+  if (inbound) {
+    return method === 'POST' ? { name: 'inbound', secret: inbound[1] } : 'method-not-allowed'
+  }
+
   if (path === '/api/health') {
     return method === 'GET' ? { name: 'health' } : 'method-not-allowed'
   }
@@ -103,6 +133,12 @@ export function matchRoute(
       return null
     }
 
+    if (table === 'campaigns' && action === 'run') {
+      // Runs one batch now. The cron handler calls the same function, so a
+      // manual trigger and a scheduled tick cannot drift apart.
+      return method === 'POST' ? { name: 'run-campaign', table, id } : 'method-not-allowed'
+    }
+
     if (table === 'contacts' && action === 'consent') {
       // POST appends to the ledger; GET reads it back. There is deliberately
       // no PATCH or DELETE — an audit trail you can edit is not one.
@@ -131,6 +167,11 @@ export function listOptionsFromSearch(search: URLSearchParams, table: Table) {
     // Exact match: a phone number is an identifier, and a partial match here
     // would let a careless lookup act on the wrong person.
     if (phone) filters.phone_e164 = `eq.${phone}`
+  }
+
+  if (table === 'campaigns') {
+    const campaignStatus = search.get('status')
+    if (campaignStatus) filters.status = `eq.${campaignStatus}`
   }
 
   if (table === 'message_templates') {

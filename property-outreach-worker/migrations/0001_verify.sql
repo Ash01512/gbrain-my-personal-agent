@@ -28,6 +28,7 @@ begin
       ('contacts', 'language', 'text'),
       ('contacts', 'source', 'text'),
       ('contacts', 'opt_in_state', 'text'),
+      ('contacts', 'opt_in_method', 'text'),
       ('contacts', 'opted_in_at', 'timestamp with time zone'),
       ('contacts', 'opted_out_at', 'timestamp with time zone'),
       ('contacts', 'last_inbound_at', 'timestamp with time zone'),
@@ -55,6 +56,15 @@ begin
       ('outreach_messages', 'block_reasons', 'jsonb'),
       ('outreach_messages', 'provider_message_id', 'text'),
       ('outreach_messages', 'sent_at', 'timestamp with time zone'),
+      ('outreach_messages', 'campaign_id', 'uuid'),
+      ('campaigns', 'id', 'uuid'),
+      ('campaigns', 'name', 'text'),
+      ('campaigns', 'template_id', 'uuid'),
+      ('campaigns', 'status', 'text'),
+      ('campaigns', 'variable_sources', 'jsonb'),
+      ('campaigns', 'daily_cap', 'integer'),
+      ('campaigns', 'batch_size', 'integer'),
+      ('campaigns', 'sent_count', 'integer'),
       ('properties', 'id', 'uuid'),
       ('properties', 'title', 'text'),
       ('properties', 'reference', 'text'),
@@ -96,13 +106,33 @@ begin
       || 'an opt-in with nothing behind it can be stored';
   end if;
 
+  -- The once-per-campaign index. Without it a cron tick that overlaps another,
+  -- or a retry that replays, sends the same person the same message twice --
+  -- which to the recipient is indistinguishable from spam.
+  if not exists (
+    select 1 from pg_indexes
+    where schemaname = 'public' and indexname = 'outreach_messages_campaign_once_key'
+  ) then
+    problems := problems || 'outreach_messages is missing the once-per-campaign index';
+  end if;
+
+  -- The trigger stopping a campaign going active on a template Meta has not
+  -- approved. The scheduler runs unattended, so this has to hold in the
+  -- database rather than only in the Worker.
+  if not exists (
+    select 1 from pg_trigger where tgname = 'campaigns_require_approved_template'
+  ) then
+    problems := problems || 'campaigns is missing the approved-template trigger';
+  end if;
+
   -- RLS. Off means the anon key reads every contact and every phone number.
   for problem in
     select format('RLS is OFF for public.%s', c.relname)
     from pg_class c
     join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public'
-      and c.relname in ('properties','contacts','consent_events','message_templates','outreach_messages')
+      and c.relname in ('properties','contacts','consent_events','message_templates',
+                        'outreach_messages','campaigns')
       and not c.relrowsecurity
   loop
     problems := problems || problem;

@@ -9,14 +9,37 @@
 import { isAuthorized } from '../../job-tracker-worker/src/auth'
 import { Supabase, SupabaseError } from '../../job-tracker-worker/src/supabase'
 import {
+  allowanceForRun,
+  audienceFilters,
+  draftFor,
+  emptyReport,
+  limitsForCampaign,
+  noteReason,
+  type RunReport,
+} from './campaign'
+import {
   evaluateGate,
   renderTemplate,
   serviceWindowOpen,
   TemplateRenderError,
   unsupportedClaims,
+  type GateLimits,
   type GateResult,
 } from './consent'
+import {
+  classifyInbound,
+  normalisePhone,
+  parseInbound,
+  secretMatches,
+} from './inbound'
 import * as letsbot from './letsbot'
+import {
+  evidenceNote,
+  optInDoneHtml,
+  optInPageHtml,
+  OptInError,
+  parseSubmission,
+} from './optin'
 import {
   listOptionsFromSearch,
   matchRoute,
@@ -27,15 +50,18 @@ import {
 } from './router'
 import {
   assertUuid,
+  parseCampaign,
   parseConsent,
   parseContact,
   parseDraft,
   parseProperty,
   parseTemplate,
   ValidationError,
+  type Campaign,
   type Contact,
   type MessageTemplate,
   type OutreachMessage,
+  type Property,
 } from './schema'
 import { dashboardHtml } from './ui'
 
@@ -48,27 +74,45 @@ export interface Env {
   LETSBOT_SEND_PATH?: string
   /** "true" arms real sending. Anything else keeps every send a dry run. */
   OUTREACH_LIVE?: string
+  /**
+   * "true" lets the cron handler send without a human. Independent of
+   * OUTREACH_LIVE on purpose: autopilot in dry run is the rehearsal you want
+   * before autopilot on a real number.
+   */
+  OUTREACH_AUTOPILOT?: string
   OUTREACH_MAX_PER_CONTACT?: string
   OUTREACH_WINDOW_DAYS?: string
+  /** Path secret for the provider's inbound webhook. See inbound.ts. */
+  INBOUND_WEBHOOK_SECRET?: string
+  /** Shown on the public opt-in page. */
+  BUSINESS_NAME?: string
   APP_TIMEZONE?: string
 }
 
-export interface Limits {
-  maxPerContact: number
-  windowDays: number
-}
+export type Limits = GateLimits
 
 /**
  * Reads the caps, falling back to values that are safe rather than permissive.
  *
  * A malformed OUTREACH_MAX_PER_CONTACT must not become Infinity. The whole
- * point of the cap is to hold when someone fat-fingers the config.
+ * point of a cap is to hold when someone fat-fingers the config — and with no
+ * human in the loop, nobody is watching the first run that gets it wrong.
+ *
+ * `oncePerContact` is true and not configurable. One message per person is the
+ * campaign policy this system implements, and it is enforced again by a unique
+ * index in the database.
  */
 export function limitsFrom(env: Env): Limits {
   return {
     maxPerContact: positiveInt(env.OUTREACH_MAX_PER_CONTACT, 2, 20),
     windowDays: positiveInt(env.OUTREACH_WINDOW_DAYS, 30, 365),
+    oncePerContact: true,
   }
+}
+
+/** Autopilot needs its own explicit "true", for the same reason live sending does. */
+export function isAutopilot(env: Env): boolean {
+  return env.OUTREACH_AUTOPILOT === 'true'
 }
 
 function positiveInt(raw: string | undefined, fallback: number, max: number): number {
@@ -102,6 +146,7 @@ const PARSERS: Record<Table, (body: unknown, partial?: boolean) => Record<string
   contacts: parseContact,
   message_templates: parseTemplate,
   outreach_messages: parseDraft,
+  campaigns: parseCampaign,
 }
 
 const ROW_LIMIT = 1000
@@ -119,9 +164,42 @@ export default {
     if (match === 'method-not-allowed') return json({ error: 'method not allowed' }, 405)
 
     if (match.name === 'ui') {
-      return new Response(dashboardHtml(isLive(env)), {
+      return new Response(dashboardHtml(isLive(env), isAutopilot(env)), {
         headers: { 'content-type': 'text/html; charset=utf-8' },
       })
+    }
+
+    // ── Public routes ────────────────────────────────────────────────────
+    // These sit ahead of the token check because the people and systems that
+    // use them cannot hold the token: a member of the public filling in the
+    // opt-in form, and the provider posting a webhook. Each carries its own
+    // authentication instead — a required consent checkbox, and a path secret.
+
+    const businessName = env.BUSINESS_NAME || 'our team'
+
+    if (match.name === 'optin-form') {
+      return html(optInPageHtml(businessName))
+    }
+
+    if (match.name === 'optin-submit') {
+      if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+        return html(optInPageHtml(businessName, 'Sorry — we could not save that. Try again later.'), 503)
+      }
+      const db = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+      return optInSubmit(request, db, businessName)
+    }
+
+    if (match.name === 'inbound') {
+      // A wrong secret is a 404, not a 403: an attacker probing the path
+      // learns nothing about whether they found a real endpoint.
+      if (!secretMatches(match.secret ?? '', env.INBOUND_WEBHOOK_SECRET)) {
+        return json({ error: 'not found' }, 404)
+      }
+      if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+        return json({ error: 'not configured' }, 503)
+      }
+      const db = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+      return handleInbound(request, db)
     }
 
     if (match.name === 'health') {
@@ -130,6 +208,7 @@ export default {
         service_role_key: Boolean(env.SUPABASE_SERVICE_ROLE_KEY),
         api_token: Boolean(env.API_TOKEN),
         letsbot_api_key: Boolean(env.LETSBOT_API_KEY),
+        inbound_webhook_secret: Boolean(env.INBOUND_WEBHOOK_SECRET),
       }
       // Sending is reported separately from configuration. A Worker that is
       // fully configured but still in dry run is healthy and should say so
@@ -140,6 +219,7 @@ export default {
           ok,
           configured,
           sending: isLive(env) ? 'live' : 'dry-run',
+          autopilot: isAutopilot(env) ? 'on' : 'off',
           limits: limitsFrom(env),
         },
         ok ? 200 : 503,
@@ -175,6 +255,60 @@ export default {
       return json({ error: 'internal error' }, 500)
     }
   },
+
+  /**
+   * The cron tick. This is what "no human interaction" actually means: every
+   * active campaign advances by one batch, on the schedule in wrangler.toml.
+   *
+   * Three properties this handler needs and a request handler does not:
+   *
+   *   - It refuses to send unless OUTREACH_AUTOPILOT is exactly "true", so
+   *     deploying the Worker does not by itself start a campaign.
+   *   - One campaign's failure does not stop the others; each is caught.
+   *   - It reports to the log, because the log is the only place anyone will
+   *     ever see what it did.
+   */
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(tick(env, new Date(event.scheduledTime)))
+  },
+}
+
+export async function tick(env: Env, now: Date): Promise<RunReport[]> {
+  if (!isAutopilot(env)) {
+    console.log('autopilot off (OUTREACH_AUTOPILOT is not "true") — no campaigns run')
+    return []
+  }
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('autopilot cannot run: supabase is not configured')
+    return []
+  }
+
+  const db = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+  const limits = limitsFrom(env)
+
+  const campaigns = await db.list<Campaign>('campaigns', {
+    filters: { status: 'eq.active' },
+    order: 'created_at.asc',
+    limit: 25,
+  })
+
+  const reports: RunReport[] = []
+  for (const campaign of campaigns) {
+    try {
+      const report = await runCampaign(campaign, db, env, limits, now)
+      reports.push(report)
+      console.log('campaign run', JSON.stringify(report))
+    } catch (error) {
+      // One broken campaign must not stop the rest. Logged rather than
+      // rethrown, because a throw here would abandon every campaign after it.
+      console.error(`campaign ${campaign.name} failed`, error)
+      reports.push({
+        ...emptyReport(campaign.name),
+        stoppedBecause: error instanceof Error ? error.message : 'run failed',
+      })
+    }
+  }
+  return reports
 }
 
 async function handle(
@@ -192,6 +326,14 @@ async function handle(
   if (match.name === 'queue') {
     const rows = await db.list<OutreachMessage>('outreach_messages', queueOptions(url.searchParams))
     return json({ data: rows, count: rows.length, sending: isLive(env) ? 'live' : 'dry-run' })
+  }
+
+  if (match.name === 'run-campaign') {
+    const id = assertUuid(match.id!, 'campaign id')
+    const campaign = await db.getById<Campaign>('campaigns', id)
+    if (!campaign) return json({ error: 'not found' }, 404)
+    const report = await runCampaign(campaign, db, env, limits, now)
+    return json({ report })
   }
 
   if (match.name === 'draft') return draft(request, db, limits, now)
@@ -307,17 +449,28 @@ async function runGate(
     limit: limits.maxPerContact + 1,
   })
 
+  // Lifetime, for the once-ever rule. A separate query rather than a wider
+  // window on the one above, because "ever" and "recently" are different
+  // questions and collapsing them would silently retire the rolling cap.
+  const lifetime = await db.list<{ id: string }>('outreach_messages', {
+    select: 'id',
+    filters: { contact_id: `eq.${contactId}`, status: 'eq.sent' },
+    limit: 1,
+  })
+
   const result = evaluateGate({
     contact: {
       phone_e164: contact.phone_e164,
       opt_in_state: contact.opt_in_state,
       last_inbound_at: contact.last_inbound_at,
+      opt_in_method: contact.opt_in_method,
     },
     template: template
       ? { name: template.name, category: template.category, meta_status: template.meta_status }
       : null,
     renderedBody,
     recentSendCount: recent.length,
+    lifetimeSendCount: lifetime.length,
     limits,
     now,
   })
@@ -560,10 +713,411 @@ async function recordConsent(request: Request, match: Match, db: Supabase): Prom
   const optingIn = values.event === 'opt_in'
   const updated = await db.update<Contact>('contacts', contactId, {
     opt_in_state: optingIn ? 'opted_in' : 'opted_out',
+    // Carried onto the contact so the claim guard can tell an opt-in the
+    // person initiated from one the business recorded on their behalf.
+    // Cleared on opt-out so a later re-subscribe cannot inherit it.
+    opt_in_method: optingIn ? values.method : null,
     ...(optingIn ? { opted_in_at: occurredAt } : { opted_out_at: occurredAt }),
   })
 
   return json({ data: updated ?? contact, event }, 201)
+}
+
+// ── Autopilot ──────────────────────────────────────────────────────────────
+
+/**
+ * Runs one batch of one campaign.
+ *
+ * Called by the cron handler and by POST /api/campaigns/:id/run, so the
+ * scheduled path and the manual path cannot drift apart — a manual trigger
+ * that behaved differently from the real thing would be a rehearsal of the
+ * wrong play.
+ *
+ * The order of checks matters and is not an accident:
+ *
+ *   1. Campaign must be active.
+ *   2. Template must still be approved by Meta — re-read every run, because
+ *      Meta can pause a template at any time and nobody here would notice.
+ *   3. Daily budget and batch size, whichever is smaller.
+ *   4. For each candidate: personalise, then gate, then send.
+ *
+ * Every step that cannot be completed safely skips that contact and records
+ * why. Nothing here retries, escalates, or improvises — an unattended process
+ * that improvises is how a list gets emptied into WhatsApp.
+ */
+export async function runCampaign(
+  campaign: Campaign,
+  db: Supabase,
+  env: Env,
+  baseLimits: Limits,
+  now: Date,
+): Promise<RunReport> {
+  const report = emptyReport(campaign.name)
+
+  if (campaign.status !== 'active') {
+    report.stoppedBecause = `campaign is ${campaign.status}`
+    return report
+  }
+
+  const template = await db.getById<MessageTemplate>('message_templates', campaign.template_id)
+  if (!template) {
+    report.stoppedBecause = 'template no longer exists'
+    return report
+  }
+  // Re-read rather than trusted from when the campaign was created. Meta can
+  // pause or reject a template after approval, and a scheduler that cached the
+  // old verdict would keep sending against it.
+  if (template.meta_status !== 'approved') {
+    report.stoppedBecause = `template is ${template.meta_status}, not approved by Meta`
+    // Park the campaign so it stops burning cron ticks until someone looks.
+    await db.update('campaigns', campaign.id, { status: 'paused' })
+    return report
+  }
+
+  const sentToday = await countSentToday(db, campaign.id, now, env.APP_TIMEZONE)
+  const allowance = allowanceForRun(campaign, sentToday)
+  if (allowance <= 0) {
+    report.stoppedBecause = `daily cap reached (${sentToday}/${campaign.daily_cap})`
+    return report
+  }
+
+  const property = campaign.property_id
+    ? await db.getById<Property>('properties', campaign.property_id)
+    : null
+
+  // Over-fetch: some candidates will already have been messaged by this
+  // campaign, and those are filtered in memory rather than with a join
+  // PostgREST would make awkward.
+  const candidates = await db.list<Contact>('contacts', {
+    filters: audienceFilters(campaign),
+    order: 'created_at.asc',
+    limit: Math.min(allowance * 5, 200),
+  })
+
+  const alreadyDone = await sentContactIds(db, campaign.id)
+  const limits = limitsForCampaign(baseLimits)
+
+  for (const contact of candidates) {
+    if (report.sent >= allowance) break
+    if (alreadyDone.has(contact.id)) continue
+    report.considered += 1
+
+    const built = draftFor(campaign, template, contact, property, renderTemplate)
+    if ('skip' in built) {
+      report.skipped += 1
+      noteReason(report, built.skip)
+      continue
+    }
+
+    const gate = await runGate(db, contact.id, template.id, built.body, limits, now)
+    if (!gate || !gate.result.allowed) {
+      report.blocked += 1
+      for (const blocker of gate?.result.blockers ?? [{ code: 'CONTACT_MISSING', detail: '' }]) {
+        noteReason(report, blocker.code)
+      }
+      continue
+    }
+
+    // The row is written before the send, not after. If the send throws or the
+    // isolate is evicted mid-flight, the row exists in `sending` and the
+    // unique index stops the next tick re-drafting the same contact — the
+    // failure mode being avoided is a duplicate message, which to the
+    // recipient is indistinguishable from spam.
+    let row: OutreachMessage
+    try {
+      row = await db.insert<OutreachMessage>('outreach_messages', {
+        campaign_id: campaign.id,
+        contact_id: contact.id,
+        property_id: campaign.property_id,
+        template_id: template.id,
+        language: contact.language || template.language,
+        rendered_body: built.body,
+        variables: built.variables,
+        status: 'sending',
+        block_reasons: [],
+      })
+    } catch (error) {
+      // 23505 from the once-per-campaign index: another tick got there first.
+      // Not an error worth reporting, just a race resolving correctly.
+      if (error instanceof SupabaseError && error.code === '23505') continue
+      throw error
+    }
+
+    try {
+      const outcome = await letsbot.send(letsbotConfig(env), {
+        kind: 'template',
+        phone: contact.phone_e164,
+        templateName: template.name,
+        language: row.language,
+        variables: built.variables,
+        body: built.body,
+      })
+
+      if (!outcome.delivered) {
+        // Dry run. The row is parked as approved so a later live run picks it
+        // up, rather than counted as sent — the number has to be true.
+        await db.update('outreach_messages', row.id, {
+          status: 'approved',
+          approved_at: now.toISOString(),
+          approved_by: 'autopilot (dry run)',
+        })
+        report.skipped += 1
+        noteReason(report, 'dry run — OUTREACH_LIVE is not "true"')
+        continue
+      }
+
+      await db.update('outreach_messages', row.id, {
+        status: 'sent',
+        sent_at: now.toISOString(),
+        provider_message_id: outcome.providerMessageId,
+        approved_by: 'autopilot',
+        approved_at: now.toISOString(),
+      })
+      report.sent += 1
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'send failed'
+      await db.update('outreach_messages', row.id, { status: 'failed', error: detail })
+      report.failed += 1
+      noteReason(report, detail)
+      // Stop the batch on a provider failure rather than working through the
+      // list. If LetsBot is rejecting sends — bad credentials, a suspended
+      // number, a rate limit — every remaining attempt fails the same way, and
+      // hammering a suspended number is how a suspension becomes a ban.
+      report.stoppedBecause = 'stopped after a provider failure'
+      break
+    }
+  }
+
+  await db.update('campaigns', campaign.id, {
+    last_run_at: now.toISOString(),
+    sent_count: campaign.sent_count + report.sent,
+  })
+
+  return report
+}
+
+/** Contacts this campaign has already produced a message for. */
+async function sentContactIds(db: Supabase, campaignId: string): Promise<Set<string>> {
+  const rows = await db.list<{ contact_id: string }>('outreach_messages', {
+    select: 'contact_id',
+    filters: { campaign_id: `eq.${campaignId}`, status: 'neq.cancelled' },
+    limit: 1000,
+  })
+  return new Set(rows.map((row) => row.contact_id))
+}
+
+async function countSentToday(
+  db: Supabase,
+  campaignId: string,
+  now: Date,
+  timeZone: string | undefined,
+): Promise<number> {
+  // Midnight in the configured zone, not UTC. With APP_TIMEZONE at Asia/Dubai
+  // a UTC day boundary would reset the cap at 04:00 local, handing the
+  // campaign a second day's budget in the middle of the night.
+  const today = localDate(timeZone, now)
+  const rows = await db.list<{ id: string }>('outreach_messages', {
+    select: 'id',
+    filters: {
+      campaign_id: `eq.${campaignId}`,
+      status: 'eq.sent',
+      sent_at: `gte.${zoneMidnightIso(today, timeZone, now)}`,
+    },
+    limit: 1001,
+  })
+  return rows.length
+}
+
+/** Today's date in the configured zone, as YYYY-MM-DD. */
+export function localDate(timeZone: string | undefined, now = new Date()): string {
+  try {
+    // en-CA formats as YYYY-MM-DD, which is what Postgres `date` wants.
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timeZone || 'UTC',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now)
+  } catch {
+    // An invalid zone must not take the campaign runner down; fall back to UTC.
+    return now.toISOString().slice(0, 10)
+  }
+}
+
+/**
+ * Start of `date` in `timeZone`, as an instant.
+ *
+ * Derived by measuring the zone's actual offset at `now` rather than assuming
+ * one, so it stays correct across a DST change without a timezone library.
+ */
+export function zoneMidnightIso(date: string, timeZone: string | undefined, now: Date): string {
+  const offsetMs = zoneOffsetMs(timeZone, now)
+  return new Date(Date.parse(`${date}T00:00:00Z`) - offsetMs).toISOString()
+}
+
+function zoneOffsetMs(timeZone: string | undefined, at: Date): number {
+  if (!timeZone) return 0
+  try {
+    // Format the same instant as if it were UTC, then diff: the gap is the
+    // zone's offset at that instant.
+    const asZone = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(at)
+    const [datePart, timePart] = asZone.split(', ')
+    const parsed = Date.parse(`${datePart}T${timePart}Z`)
+    if (Number.isNaN(parsed)) return 0
+    return parsed - at.getTime()
+  } catch {
+    return 0
+  }
+}
+
+// ── Public route handlers ──────────────────────────────────────────────────
+
+/**
+ * Records an opt-in from the public form.
+ *
+ * Upserts by phone: someone who signs up twice, or who signed up after
+ * previously opting out, must land on the same contact row. A second row would
+ * split their history, and an opt-out recorded against one row would leave the
+ * other still sendable.
+ */
+async function optInSubmit(
+  request: Request,
+  db: Supabase,
+  businessName: string,
+): Promise<Response> {
+  let submission: ReturnType<typeof parseSubmission>
+  try {
+    submission = parseSubmission(new URLSearchParams(await request.text()))
+  } catch (error) {
+    const message = error instanceof OptInError ? error.message : 'Something went wrong.'
+    return html(optInPageHtml(businessName, message), 400)
+  }
+
+  const at = new Date().toISOString()
+  const existing = await db.list<Contact>('contacts', {
+    filters: { phone_e164: `eq.${submission.phone}` },
+    limit: 1,
+  })
+
+  let contact = existing[0] ?? null
+  if (!contact) {
+    contact = await db.insert<Contact>('contacts', {
+      phone_e164: submission.phone,
+      full_name: submission.name,
+      contact_type: submission.contactType,
+      source: 'web opt-in form',
+    })
+  } else if (submission.name && !contact.full_name) {
+    await db.update('contacts', contact.id, { full_name: submission.name })
+  }
+
+  await db.insert('consent_events', {
+    contact_id: contact.id,
+    event: 'opt_in',
+    channel: 'whatsapp',
+    method: 'website_form',
+    evidence_note: evidenceNote(request, at),
+    occurred_at: at,
+    recorded_by: 'optin-page',
+  })
+  await db.update('contacts', contact.id, { opt_in_state: 'opted_in', opted_in_at: at, opt_in_method: 'website_form' })
+
+  return html(optInDoneHtml(businessName))
+}
+
+/**
+ * Handles an inbound message from the provider.
+ *
+ * Always answers 200, even for a payload it could not parse. A webhook that
+ * returns an error gets retried, and a provider retrying a message it has
+ * already delivered is noise; worse, a parse failure that 500s can make a
+ * provider disable the webhook entirely — which would silently stop opt-outs
+ * being recorded.
+ */
+async function handleInbound(request: Request, db: Supabase): Promise<Response> {
+  let payload: unknown
+  try {
+    payload = await request.json()
+  } catch {
+    return json({ ok: true, note: 'unparseable body ignored' })
+  }
+
+  const inbound = parseInbound(payload)
+  if (!inbound) return json({ ok: true, note: 'no message found in payload' })
+
+  const phone = normalisePhone(inbound.phone)
+  const at = inbound.at ?? new Date().toISOString()
+  const intent = classifyInbound(inbound.text)
+
+  const existing = await db.list<Contact>('contacts', {
+    filters: { phone_e164: `eq.${phone}` },
+    limit: 1,
+  })
+  let contact = existing[0] ?? null
+
+  if (!contact) {
+    // Someone writing to the business from a number not on file. Create the
+    // row so the opt-out below has something to attach to — an opt-out from an
+    // unknown number that we drop on the floor is the worst outcome here.
+    contact = await db.insert<Contact>('contacts', {
+      phone_e164: phone,
+      source: 'inbound whatsapp message',
+    })
+  }
+
+  if (intent === 'opt_out') {
+    await db.insert('consent_events', {
+      contact_id: contact.id,
+      event: 'opt_out',
+      channel: 'whatsapp',
+      method: 'user_request',
+      evidence_note: `inbound message: ${inbound.text.slice(0, 200)}`,
+      occurred_at: at,
+      recorded_by: 'inbound-webhook',
+    })
+    await db.update('contacts', contact.id, {
+      opt_in_state: 'opted_out',
+      opted_out_at: at,
+      last_inbound_at: at,
+    })
+    return json({ ok: true, intent, contact_id: contact.id })
+  }
+
+  // Their own message is the evidence, so this is the one consent method that
+  // needs nothing else attached. An existing opt-out is NOT overturned by a
+  // later message: someone who said stop and then asks an unrelated question
+  // has not re-subscribed.
+  if (contact.opt_in_state !== 'opted_out') {
+    await db.insert('consent_events', {
+      contact_id: contact.id,
+      event: 'opt_in',
+      channel: 'whatsapp',
+      method: 'inbound_message',
+      evidence_note: `inbound message: ${inbound.text.slice(0, 200)}`,
+      occurred_at: at,
+      recorded_by: 'inbound-webhook',
+    })
+    await db.update('contacts', contact.id, {
+      opt_in_state: 'opted_in',
+      opted_in_at: at,
+      opt_in_method: 'inbound_message',
+      last_inbound_at: at,
+    })
+  } else {
+    // Still record that they wrote, without touching their opt-out.
+    await db.update('contacts', contact.id, { last_inbound_at: at })
+  }
+
+  return json({ ok: true, intent, contact_id: contact.id })
 }
 
 // ── Stats ──────────────────────────────────────────────────────────────────
@@ -632,6 +1186,19 @@ function corsHeaders(): Record<string, string> {
     'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
     'access-control-allow-headers': 'authorization,content-type,x-api-token',
   }
+}
+
+function html(body: string, status = 200): Response {
+  return new Response(body, {
+    status,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      // The opt-in page takes user input and is public. No inline scripts are
+      // used, so the strictest policy that still renders is the right one.
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
+      'referrer-policy': 'no-referrer',
+    },
+  })
 }
 
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {

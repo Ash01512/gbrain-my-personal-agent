@@ -5,10 +5,12 @@ cover letters, and queues them for human approval. The human presses submit.
 
 - `job-tracker-worker/` — Cloudflare Worker: JSON API and approval dashboard
   over the `job-tracker` Supabase database.
-- `property-outreach-worker/` — a second Worker on the same pattern, for
-  WhatsApp outreach to property owners and buyers via LetsBot. Agent drafts,
-  human approves, and a consent gate refuses anything without a recorded
-  opt-in. Deployed by hand, not by the Git integration.
+- `property-outreach-worker/` — a second Worker on the same stack, for
+  autonomous WhatsApp outreach to property owners and buyers via LetsBot. An
+  hourly cron runs campaigns with no human in the loop; a consent gate refuses
+  anything without a recorded opt-in, anything claiming a past interaction the
+  database cannot evidence, and any second message to the same person.
+  Deployed by hand, not by the Git integration.
 - `docs/designs/job-tracker-agent.md` — approved design, including why the
   agent loop runs as a scheduled Claude session rather than in the Worker.
 - The rest of this file documents the agent tooling the workspace runs on.

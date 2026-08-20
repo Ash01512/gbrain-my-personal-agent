@@ -14,7 +14,7 @@ import {
 } from '../src/consent'
 
 const NOW = new Date('2026-08-20T12:00:00Z')
-const LIMITS = { maxPerContact: 2, windowDays: 30 }
+const LIMITS = { maxPerContact: 2, windowDays: 30, oncePerContact: true }
 
 function input(overrides: Partial<GateInput> = {}): GateInput {
   return {
@@ -26,6 +26,7 @@ function input(overrides: Partial<GateInput> = {}): GateInput {
     template: { name: 'listing_intro', category: 'marketing', meta_status: 'approved' },
     renderedBody: 'Hi Sara, I have a 2-bed in Marina at 1.9M. Reply STOP to opt out.',
     recentSendCount: 0,
+    lifetimeSendCount: 0,
     limits: LIMITS,
     now: NOW,
     ...overrides,
@@ -111,7 +112,61 @@ describe('evaluateGate — the prior-contact claim guard', () => {
     }))
     const blocker = result.blockers.find((b) => b.code === 'UNSUPPORTED_CLAIM')
     expect(blocker?.detail).toContain('you showed interest')
-    expect(blocker?.detail).toContain('never messaged you')
+    expect(blocker?.detail).toContain('nothing on file shows this person contacted you')
+  })
+
+  it('allows the claim for someone who opted in through the web form', () => {
+    // They filled in the form, so they did reach out — the claim is true, and
+    // blocking it would push someone towards weakening the guard.
+    const result = evaluateGate(input({
+      renderedBody: 'Hi, you asked to hear about property in Marina.',
+      contact: {
+        phone_e164: '+971501234567',
+        opt_in_state: 'opted_in',
+        last_inbound_at: null,
+        opt_in_method: 'website_form',
+      },
+    }))
+    expect(codes(result)).not.toContain('UNSUPPORTED_CLAIM')
+  })
+
+  it('still blocks the claim for an imported opt-in', () => {
+    // The dangerous case. A documented import is consent to message, but it is
+    // NOT evidence that this person expressed interest in anything.
+    const result = evaluateGate(input({
+      renderedBody: 'Hi, you asked to hear about property in Marina.',
+      contact: {
+        phone_e164: '+971501234567',
+        opt_in_state: 'opted_in',
+        last_inbound_at: null,
+        opt_in_method: 'imported_documented',
+      },
+    }))
+    expect(codes(result)).toContain('UNSUPPORTED_CLAIM')
+  })
+
+  it('still blocks the claim when the business phoned them', () => {
+    const result = evaluateGate(input({
+      renderedBody: 'Following up on your enquiry about the Marina tower.',
+      contact: {
+        phone_e164: '+971501234567',
+        opt_in_state: 'opted_in',
+        last_inbound_at: null,
+        opt_in_method: 'phone_recorded',
+      },
+    }))
+    expect(codes(result)).toContain('UNSUPPORTED_CLAIM')
+  })
+
+  it('catches the phrasings that slipped past the first pattern list', () => {
+    for (const body of [
+      'Hi, you asked to hear about Marina property.',
+      'You told us you wanted a 2-bed.',
+      'You were looking for something in JVC.',
+      'Since we spoke last month, prices moved.',
+    ]) {
+      expect(unsupportedClaims(body), body).not.toEqual([])
+    }
   })
 
   it('allows the same claim once the person really has messaged first', () => {
@@ -149,7 +204,7 @@ describe('evaluateGate — the prior-contact claim guard', () => {
   })
 })
 
-describe('evaluateGate — templates and the service window', () => {
+describe('evaluateGate — templates', () => {
   it('blocks a template Meta has not approved', () => {
     for (const status of ['draft', 'submitted', 'rejected', 'paused', 'disabled'] as const) {
       const result = evaluateGate(input({
@@ -159,12 +214,15 @@ describe('evaluateGate — templates and the service window', () => {
     }
   })
 
-  it('blocks free-form outside the 24h window', () => {
-    const result = evaluateGate(input({ template: null }))
-    expect(codes(result)).toContain('FREEFORM_OUTSIDE_WINDOW')
+  it('requires a template, always', () => {
+    // This system is template-only. Free-form is legal for 24h after someone
+    // writes to you, but that is a conversation, and a conversation is not
+    // what runs unattended on a schedule.
+    expect(codes(evaluateGate(input({ template: null })))).toContain('TEMPLATE_REQUIRED')
   })
 
-  it('allows free-form inside the 24h window', () => {
+  it('still requires a template inside the 24h window', () => {
+    // The service window would permit free-form here. The autopilot does not.
     const result = evaluateGate(input({
       template: null,
       contact: {
@@ -174,7 +232,29 @@ describe('evaluateGate — templates and the service window', () => {
         last_inbound_at: '2026-08-20T10:00:00Z',
       },
     }))
-    expect(result.allowed).toBe(true)
+    expect(result.allowed).toBe(false)
+    expect(codes(result)).toContain('TEMPLATE_REQUIRED')
+  })
+})
+
+describe('evaluateGate — one message per contact, ever', () => {
+  it('blocks a contact who has already had their message', () => {
+    const result = evaluateGate(input({ lifetimeSendCount: 1 }))
+    expect(result.allowed).toBe(false)
+    expect(codes(result)).toContain('ALREADY_MESSAGED')
+  })
+
+  it('allows the first message', () => {
+    expect(evaluateGate(input({ lifetimeSendCount: 0 })).allowed).toBe(true)
+  })
+
+  it('is skipped when the policy is off', () => {
+    const result = evaluateGate(input({
+      lifetimeSendCount: 3,
+      recentSendCount: 0,
+      limits: { maxPerContact: 5, windowDays: 30, oncePerContact: false },
+    }))
+    expect(codes(result)).not.toContain('ALREADY_MESSAGED')
   })
 })
 

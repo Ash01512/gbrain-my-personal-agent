@@ -19,8 +19,9 @@ export type BlockCode =
   | 'NO_OPT_IN'
   | 'OPTED_OUT'
   | 'TEMPLATE_MISSING'
+  | 'TEMPLATE_REQUIRED'
   | 'TEMPLATE_NOT_APPROVED'
-  | 'FREEFORM_OUTSIDE_WINDOW'
+  | 'ALREADY_MESSAGED'
   | 'UNSUPPORTED_CLAIM'
   | 'FREQUENCY_CAP'
   | 'EMPTY_BODY'
@@ -40,6 +41,41 @@ export interface GateContact {
   opt_in_state: OptInState
   /** Last time this person messaged us. Null means they never have. */
   last_inbound_at: string | null
+  /** How the current opt-in was obtained. See SELF_INITIATED_METHODS. */
+  opt_in_method?: string | null
+}
+
+/**
+ * Opt-in methods where the PERSON came to the business.
+ *
+ * This is the second half of the claim guard's evidence. `last_inbound_at`
+ * proves they wrote on WhatsApp, but someone who filled in the web form or
+ * tapped a click-to-WhatsApp ad also genuinely reached out — copy referring to
+ * their enquiry is true for them, and blocking it would be wrong.
+ *
+ * The methods NOT on this list are the whole point. `imported_documented`
+ * covers a list from somewhere else, and `phone_recorded` means the business
+ * called them; neither is the person expressing interest, so a claim that they
+ * did stays blocked. `in_person_written` is deliberately excluded too — a
+ * signature on a sheet at an event does not establish that they enquired about
+ * anything.
+ */
+const SELF_INITIATED_METHODS = new Set([
+  'website_form',
+  'click_to_whatsapp_ad',
+  'inbound_message',
+])
+
+/**
+ * Whether the database can show this person made contact first.
+ *
+ * The claim guard's entire question. Exported so the campaign runner and the
+ * dashboard ask it the same way rather than each reimplementing the rule.
+ */
+export function hasProvenContact(contact: GateContact): boolean {
+  if (contact.last_inbound_at) return true
+  if (contact.opt_in_state !== 'opted_in') return false
+  return SELF_INITIATED_METHODS.has(contact.opt_in_method ?? '')
 }
 
 export interface GateTemplate {
@@ -48,14 +84,34 @@ export interface GateTemplate {
   meta_status: MetaStatus
 }
 
+export interface GateLimits {
+  maxPerContact: number
+  windowDays: number
+  /**
+   * One message per contact, ever. The campaign policy this system was built
+   * for: a single first-contact message, never a sequence. It is also the
+   * cheapest protection there is — a person who hears from you once and is not
+   * interested simply ignores it, where a follow-up is what earns the Block.
+   */
+  oncePerContact: boolean
+}
+
 export interface GateInput {
   contact: GateContact
-  /** Null means the draft is free-form, which is only legal inside the window. */
+  /**
+   * Required. This system is template-only: every message it sends is a
+   * one-off first contact, which WhatsApp permits solely through a template
+   * Meta has approved. Free-form is legal for 24 hours after someone writes to
+   * you, but that is a conversation, and a conversation is not what runs
+   * unattended on a schedule.
+   */
   template: GateTemplate | null
   renderedBody: string
   /** Messages already sent to this contact inside the cap window. */
   recentSendCount: number
-  limits: { maxPerContact: number; windowDays: number }
+  /** Messages ever sent to this contact, for the once-ever rule. */
+  lifetimeSendCount: number
+  limits: GateLimits
   now: Date
 }
 
@@ -100,7 +156,10 @@ const PRIOR_CONTACT_CLAIMS: { pattern: RegExp; label: string }[] = [
   { pattern: /\byou (?:previously |earlier |recently )?(?:enquired|inquired)\b/i, label: 'claims they enquired' },
   { pattern: /\byou (?:previously |earlier |recently )?(?:contacted|approached|reached out|got in touch)\b/i, label: 'claims they contacted us' },
   { pattern: /\byou (?:previously |earlier |recently )?(?:registered|signed up|submitted|filled)\b/i, label: 'claims they registered' },
-  { pattern: /\byou (?:previously |earlier |recently )?(?:requested|asked for|asked about)\b/i, label: 'claims they requested something' },
+  { pattern: /\byou (?:previously |earlier |recently )?(?:requested|asked)\b/i, label: 'claims they asked for something' },
+  { pattern: /\byou (?:told|informed|let) (?:me|us)\b/i, label: 'claims they told us something' },
+  { pattern: /\byou (?:were|are) looking (?:for|at|to)\b/i, label: 'claims to know what they were looking for' },
+  { pattern: /\bwe (?:spoke|talked|met|connected)\b/i, label: 'claims a prior conversation' },
   { pattern: /\byour (?:recent |previous |earlier )?(?:enquiry|inquiry|request|viewing|visit|interest|registration)\b/i, label: 'refers to their enquiry' },
   { pattern: /\bas (?:we |previously )?discussed\b/i, label: 'claims a prior discussion' },
   { pattern: /\b(?:following up|further) (?:on|to) (?:your|our)\b/i, label: 'claims a prior exchange' },
@@ -142,7 +201,8 @@ export function serviceWindowOpen(lastInboundAt: string | null, now: Date): bool
  * trains people to click Approve repeatedly until it stops complaining.
  */
 export function evaluateGate(input: GateInput): GateResult {
-  const { contact, template, renderedBody, recentSendCount, limits, now } = input
+  const { contact, template, renderedBody, recentSendCount, lifetimeSendCount, limits, now } =
+    input
   const blockers: Blocker[] = []
 
   if (!isE164(contact.phone_e164)) {
@@ -170,17 +230,11 @@ export function evaluateGate(input: GateInput): GateResult {
     blockers.push({ code: 'EMPTY_BODY', detail: 'nothing to send' })
   }
 
-  const windowOpen = serviceWindowOpen(contact.last_inbound_at, now)
-
   if (!template) {
-    // Free-form is legal only inside the 24 hours after they messaged us.
-    if (!windowOpen) {
-      blockers.push({
-        code: 'FREEFORM_OUTSIDE_WINDOW',
-        detail:
-          'free-form messages are only allowed within 24h of their last message — use an approved template',
-      })
-    }
+    blockers.push({
+      code: 'TEMPLATE_REQUIRED',
+      detail: 'every message this system sends must use a template Meta approved',
+    })
   } else if (template.meta_status !== 'approved') {
     blockers.push({
       code: 'TEMPLATE_NOT_APPROVED',
@@ -191,14 +245,21 @@ export function evaluateGate(input: GateInput): GateResult {
   // The claim guard. Applies whether or not the template is approved: Meta
   // approves the *shape* of a template, and never verified that this
   // particular recipient did the thing the copy says they did.
-  if (!contact.last_inbound_at) {
+  if (!hasProvenContact(contact)) {
     const claims = unsupportedClaims(body)
     if (claims.length > 0) {
       blockers.push({
         code: 'UNSUPPORTED_CLAIM',
-        detail: `this person has never messaged you, but the text ${claims.join('; ')}`,
+        detail: `nothing on file shows this person contacted you, but the text ${claims.join('; ')}`,
       })
     }
+  }
+
+  if (limits.oncePerContact && lifetimeSendCount > 0) {
+    blockers.push({
+      code: 'ALREADY_MESSAGED',
+      detail: 'this contact has already had their one message',
+    })
   }
 
   if (recentSendCount >= limits.maxPerContact) {

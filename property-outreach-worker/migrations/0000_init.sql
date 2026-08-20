@@ -80,12 +80,21 @@ create table if not exists public.contacts (
   -- listing sheet, and it blocks every send.
   opt_in_state text not null default 'unknown'
     check (opt_in_state in ('unknown','opted_in','opted_out')),
+
+  -- How the current opt-in was obtained, denormalised from consent_events.
+  -- The gate needs it to answer a question last_inbound_at cannot: did this
+  -- person come to US? A website-form or click-to-WhatsApp opt-in is the
+  -- person reaching out, so copy referring to their enquiry is true. An
+  -- imported or phone-recorded opt-in is not, so the same copy is a false
+  -- claim and stays blocked. See SELF_INITIATED_METHODS in src/consent.ts.
+  opt_in_method text,
+
   opted_in_at timestamptz,
   opted_out_at timestamptz,
 
-  -- Last time THIS PERSON messaged us. Two jobs: it opens the 24-hour
-  -- customer-service window during which free-form replies are allowed, and
-  -- it is the only evidence that a "you contacted us earlier" claim is true.
+  -- Last time THIS PERSON messaged us, set by the inbound webhook. It is the
+  -- only evidence that a "you contacted us earlier" claim is true, and the
+  -- gate refuses copy making that claim when this is null.
   last_inbound_at timestamptz,
 
   notes text,
@@ -161,8 +170,10 @@ create table if not exists public.message_templates (
 );
 
 -- ── Outreach queue ───────────────────────────────────────────────────────
--- One row per message the agent drafted. Nothing leaves here without a human
--- moving it to 'approved' first.
+-- One row per message, whether drafted for review or produced by the
+-- autopilot. Under autopilot the row is written BEFORE the send, so an
+-- interrupted run leaves evidence and the once-per-campaign index (0002) stops
+-- the next tick sending a duplicate — which to a recipient is spam.
 
 create table if not exists public.outreach_messages (
   id uuid primary key default gen_random_uuid(),

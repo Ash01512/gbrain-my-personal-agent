@@ -35,9 +35,32 @@ LETSBOT_SEND_PATH = "/v1/messages"
 # number that sends one bad campaign does not get a second chance.
 OUTREACH_LIVE = "false"
 
+# The second switch, independent of the first. "true" lets the cron handler
+# draft and send with no human involved. Two switches rather than one because
+# autopilot-in-dry-run is the rehearsal worth having: the schedule fires, the
+# campaign selects real contacts, the payloads are built and logged, and
+# nothing is transmitted. Turn this on first, read a few runs, then set
+# OUTREACH_LIVE.
+OUTREACH_AUTOPILOT = "false"
+
 # How many messages one contact may receive in the rolling window below.
+# Note that the once-per-contact rule is stricter than either and is not
+# configurable — see limitsFrom() in src/index.ts.
 OUTREACH_MAX_PER_CONTACT = "2"
 OUTREACH_WINDOW_DAYS = "30"
+
+# Shown on the public opt-in page at /optin.
+BUSINESS_NAME = "our team"
+
+# Hourly. Each tick advances every active campaign by one batch_size, so the
+# pace is set per campaign rather than here — a shorter cron would not send
+# more, it would just reach the daily cap earlier in the day.
+#
+# Meta rates a number partly on how it ramps. A new number that sends its whole
+# list on day one is the classic way to get restricted, which is why the
+# default batch_size is 5 and daily_cap is 20.
+[triggers]
+crons = ["0 * * * *"]
 
 [observability]
 enabled = true

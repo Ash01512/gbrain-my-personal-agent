@@ -1,12 +1,14 @@
 # property-outreach-worker
 
-WhatsApp outreach to property owners and buyers, sent through
+Autonomous WhatsApp outreach to property owners and buyers, sent through
 [LetsBot](https://letsbot.net/en/api.html) on the official WhatsApp Business
-Platform, with every message reviewed by a human before it goes out.
+Platform.
 
-A Cloudflare Worker over a Supabase database: a JSON API the drafting agent
-posts to, and an approval dashboard you press Send in. Same shape as
-`job-tracker-worker/` — agent proposes, human disposes.
+A Cloudflare Worker over a Supabase database. An hourly cron advances every
+active campaign by one batch: it selects contacts, personalises a
+Meta-approved template, runs the consent gate, sends, and records the result.
+Nobody is in the loop. There is a dashboard, but it is a record of what
+happened rather than a gate the system waits on.
 
 ## The constraint everything here is built around
 
@@ -22,156 +24,221 @@ properties"* — is both untrue and the fastest route to a block-and-report.
 Block-and-report is what Meta's quality signal is made of. One campaign is
 enough.
 
-So the rules are enforced in code rather than left to whoever is clicking
-Approve:
+Removing the human reviewer does not remove any of that. It moves the entire
+weight of it onto `src/consent.ts`, which is why that file is written as pure
+functions with no database and no clock of its own, and why it is the most
+heavily tested thing in this repository.
 
 | Guard | What it stops |
 | --- | --- |
 | `NO_OPT_IN` | Messaging anyone without a recorded, evidenced opt-in |
 | `OPTED_OUT` | Messaging someone who asked you to stop |
-| `UNSUPPORTED_CLAIM` | Copy claiming a past enquiry the database cannot show |
-| `TEMPLATE_NOT_APPROVED` | Sending a template Meta has not approved |
-| `FREEFORM_OUTSIDE_WINDOW` | Free-form text outside the 24h service window |
+| `UNSUPPORTED_CLAIM` | Copy claiming a past enquiry the database cannot evidence |
+| `ALREADY_MESSAGED` | A second message to someone who already had theirs |
+| `TEMPLATE_REQUIRED` | Free-form text going out unattended |
+| `TEMPLATE_NOT_APPROVED` | Sending a template Meta has not approved, or has paused |
 | `FREQUENCY_CAP` | The same contact hearing from you too often |
 | `INVALID_PHONE` | Local-format numbers that silently never arrive |
 
-`src/consent.ts` holds all of it, as pure functions with no database and no
-clock of their own. It is the most closely tested file in this repository.
+The gate runs at draft, at edit, at approve **and again at send** — and the
+autopilot re-runs it immediately before every single message. Consent is not a
+fact about the moment a draft was written: someone can opt out in the seconds
+between selection and transmission, and only the send can cost the number.
 
-### The claim guard, specifically
+### One message, once
 
-`UNSUPPORTED_CLAIM` blocks a draft whose text asserts a prior relationship when
-`contacts.last_inbound_at` is null — that is, when that person has never
-messaged you. It catches "you showed interest", "you enquired", "following up
-on your enquiry", "as we discussed", "thanks for your interest" and the rest.
+You asked for a single message per person, and that is enforced in three
+independent places:
 
-Once someone really has messaged you, the same sentence is simply true and
-passes. Meta approves the *shape* of a template; it never verified that this
-particular recipient did the thing your copy says they did.
+1. `oncePerContact` in the gate, which is **not configurable** — there is no
+   environment variable that turns it off.
+2. A unique index on `(campaign_id, contact_id)`, so a duplicate is impossible
+   even if two cron ticks overlap or a retry replays.
+3. The campaign runner writes the queue row **before** the send, so an
+   interrupted run leaves evidence and the next tick skips that contact.
+
+Belt and braces, because to a recipient a duplicate is indistinguishable from
+spam, and unattended systems fail in exactly the ways that produce duplicates.
+
+### The claim guard, and its limit
+
+`UNSUPPORTED_CLAIM` blocks copy asserting a prior relationship when nothing on
+file shows the person made contact. Proof is either an inbound WhatsApp message
+(`last_inbound_at`) or an opt-in they initiated themselves — a website form, a
+click-to-WhatsApp ad. An `imported_documented` or `phone_recorded` opt-in is
+consent to message, but it is **not** evidence they enquired about anything, so
+the same copy stays blocked for them.
+
+Its limit, stated plainly: it is a heuristic over phrasing, not a fact-checker.
+For someone who genuinely signed up on your form, it will not catch a template
+that invents a *specific* past event ("you viewed this villa in March"). It
+stops the systematic cold-list lie, which is the thing that gets numbers banned.
+Writing true copy is still your job.
 
 ## Setup
 
-Steps 1–3 need your phone and your Meta login. Nothing here can do them for
-you, and none of the rest works until they are done.
+Steps 1–3 need your phone and your Meta login. Nothing in this repository can
+do them for you.
 
-1. **WhatsApp Business app.** Install it and register the number. A number
-   cannot be personal and business at once, so use a second number unless you
-   are willing to lose personal WhatsApp on that one. Disable Two-Step
-   Verification before any API migration or it fails.
-2. **Meta Business verification** at business.facebook.com — create the
-   Business Portfolio, submit verification, add a privacy policy URL. Both are
+1. ~~**WhatsApp Business app**~~ — done. A number cannot be personal and
+   business at once, so keep that in mind if it is your personal number.
+2. **Meta Business verification** at business.facebook.com — Business
+   Portfolio, verification submitted, privacy policy URL added. Both are
    required before you can send any template. Typically 2–5 business days.
 3. **LetsBot** — connect the account, migrate the number to the API, and submit
-   your templates for approval. LetsBot is an official Meta Business Partner,
-   so approvals go through them to Meta.
-4. **Database** — run `migrations/0000_init.sql` against your Supabase project,
-   then `migrations/0001_verify.sql`, which changes nothing and raises if the
-   live schema does not match what the Worker assumes.
-5. **Secrets** — copy `.dev.vars.example` to `.dev.vars` for local work; in
-   production use `wrangler secret put` for `SUPABASE_URL`,
-   `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN` and `LETSBOT_API_KEY`.
+   your templates. LetsBot is an official Meta Business Partner, so approvals
+   go through them to Meta. Disable Two-Step Verification before the migration
+   or it fails.
+4. ~~**Database**~~ — done. The tables are live in the `job-tracker` Supabase
+   project, RLS on, constraints verified. `migrations/0001_verify.sql` re-checks
+   the live schema against what the Worker assumes and changes nothing.
+5. **Secrets** — `wrangler secret put` for `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`, `LETSBOT_API_KEY` and
+   `INBOUND_WEBHOOK_SECRET`. Generate the last two random ones with
+   `openssl rand -hex 32`.
 6. **Deploy** — `npm run deploy` from this directory.
+7. **Point LetsBot's webhook** at `https://<worker>/hooks/inbound/<secret>`.
+   Without it, STOP replies are never recorded — which is the one failure here
+   that reliably ends a number.
 
-This Worker is deployed by hand on purpose. The repository-root
-`wrangler.toml` drives Cloudflare's Git integration for `job-tracker-worker`
-only, so a push cannot redeploy the thing that sends WhatsApp messages.
+This Worker is deployed by hand on purpose. The repository-root `wrangler.toml`
+drives Cloudflare's Git integration for `job-tracker-worker` only, so a push
+cannot redeploy the thing that sends WhatsApp messages.
 
-## Before the first real send
+## Arming it
 
-`OUTREACH_LIVE` ships as `"false"`, which makes every send a dry run: the
-Worker builds the exact payload, returns it, and transmits nothing.
+Two switches, deliberately separate, both defaulting to off:
 
-That exists because **LetsBot's request shape is not fully confirmed in this
-code.** Their docs at `docs.letsbot.net` were unreachable from the environment
-this was written in. What is confirmed, from their published PHP client, is
-that authentication uses an `api_key` and that a text send carries `phone` and
+| | `OUTREACH_AUTOPILOT` | `OUTREACH_LIVE` | Result |
+| --- | --- | --- | --- |
+| Build | `false` | `false` | Nothing runs. |
+| **Rehearsal** | `true` | `false` | Cron runs hourly, selects real contacts, builds real payloads, transmits nothing. Read the logs. |
+| Manual | `false` | `true` | Only what you press Send on in the dashboard. |
+| **Autonomous** | `true` | `true` | The system you asked for. |
+
+Go through the rehearsal row first. It is free, it exercises every line of the
+real path, and it is the only way to find out what your campaign would actually
+have sent before it sends it.
+
+### Before the first real send
+
+**LetsBot's request shape is not fully confirmed in this code.** Their docs at
+`docs.letsbot.net` were unreachable from the environment this was written in
+(blocked by the network egress proxy). Confirmed, from their published PHP
+client: authentication uses an `api_key`, and a text send carries `phone` and
 `body`. The base URL, the path, and the template payload are inferred — which
 is why they are configuration in `wrangler.toml` rather than constants.
 
-So:
-
 1. Read the send endpoint at `docs.letsbot.net`.
-2. Fix `LETSBOT_API_BASE` and `LETSBOT_SEND_PATH` in `wrangler.toml`, and the
-   field names in `src/letsbot.ts` if they differ.
-3. `POST /api/outreach/:id/send` with `OUTREACH_LIVE` still `"false"`. The
-   response contains `would_send` — the exact payload. Diff it against the docs.
-4. Only then set `OUTREACH_LIVE = "true"`.
+2. Fix `LETSBOT_API_BASE` / `LETSBOT_SEND_PATH`, and the field names in
+   `src/letsbot.ts` if they differ.
+3. `POST /api/outreach/:id/send` in dry run. The response contains
+   `would_send` — the exact payload. Diff it against the docs.
+4. Then arm it.
 
 Verifying a send path by sending is how a number picks up its first block.
 
+## Getting people onto the list
+
+This is now the only thing standing between you and a working system, and no
+code can do it for you. The Worker serves a public opt-in page at **`/optin`**
+that records consent with real evidence — timestamp, IP, country, user agent,
+and the fact that the checkbox was unticked by default. Point these at it:
+
+- A **click-to-WhatsApp ad** — the highest-volume route, and Meta treats the
+  tap itself as opt-in.
+- A **QR code** on a board, a brochure, a business card.
+- A link in your listings, your email footer, your Instagram bio.
+
+And the free one: anyone who messages your business number first is recorded as
+`inbound_message` consent automatically by the webhook, because their own
+message is the evidence.
+
+Numbers from listing sheets are not on this list and cannot be added to it by
+importing them. That is the design working, not a gap.
+
 ## API
 
-Every `/api` route needs `Authorization: Bearer $API_TOKEN` (or
-`X-API-Token`). `/` and `/api/health` do not.
+Every `/api` route needs `Authorization: Bearer $API_TOKEN`. `/`,
+`/api/health`, `/optin` and `/hooks/inbound/:secret` do not.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /` | Approval dashboard |
-| `GET /api/health` | Configuration presence, and whether sending is armed |
-| `GET /api/stats` | Queue counts, and how many contacts you may actually message |
-| `POST /api/draft` | Where the drafting agent posts one message for review |
-| `GET /api/queue` | The review list, blocked rows first |
-| `POST /api/outreach/:id/approve` | A human accepts this exact text |
-| `POST /api/outreach/:id/send` | Transmit (or dry-run) an approved message |
-| `POST /api/outreach/:id/cancel` | Drop it |
-| `POST /api/contacts/:id/consent` | Append an opt-in or opt-out to the ledger |
-| `GET /api/contacts/:id/consent` | Read that contact's consent history |
+| `GET /` | Dashboard — status, queue, consent entry |
+| `GET /optin` | **Public opt-in page** |
+| `POST /hooks/inbound/:secret` | LetsBot webhook: STOP handling and inbound consent |
+| `GET /api/health` | Configuration, and whether sending and autopilot are armed |
+| `GET /api/stats` | Counts, and how many contacts you may actually message |
+| `POST /api/campaigns` | Create a campaign |
+| `POST /api/campaigns/:id/run` | Run one batch now — same code path as the cron |
+| `GET /api/queue` | What went out, and what was blocked |
+| `POST /api/outreach/:id/approve` · `/send` · `/cancel` | Manual override |
+| `POST /api/contacts/:id/consent` | Append to the consent ledger |
+| `GET /api/contacts/:id/consent` | Read a contact's consent history |
 | `/api/contacts`, `/api/properties`, `/api/templates` | CRUD |
 
-`POST /api/outreach` is deliberately closed with a 405: drafts go through
-`/api/draft` so there is exactly one gated way into the queue.
+`POST /api/outreach` is closed with a 405: drafts go through `/api/draft` so
+there is exactly one gated way into the queue.
 
-### Why approve and send are separate
+### Campaigns
 
-Approving is the human's judgement about specific words. Sending is the
-transmission. Keeping them apart means a provider-side failure can be retried
-without re-asking for approval, and a queue can be approved offline.
+A campaign is a standing instruction — this template, to this audience, at this
+pace. `variable_sources` maps template placeholders to columns, e.g.
+`["contact.full_name", "property.area"]`. A contact whose values are missing is
+**skipped, not sent a message with a hole in it**: "Hi ," reads as a botched
+mail-merge, and the response to a botched mail-merge is Block.
 
-The gate runs at draft, at edit, at approve **and again at send** — four times
-for one message. Consent is not a fact about the moment a draft was written:
-someone can opt out between a human clicking Approve and the send going out,
-and the send is the only one of those that can get a number banned. `worker.test.ts`
-tests that path directly.
+`daily_cap` (default 20) and `batch_size` (default 5) set the pace. Meta rates a
+number partly on how it ramps, and a new number that sends its whole list on day
+one is the classic way to get restricted. Start lower than feels necessary.
+
+If Meta pauses your template mid-campaign, the runner notices on its next tick,
+parks the campaign, and stops. Nobody has to be watching.
 
 ## The consent ledger
 
-`consent_events` is append-only. There is no update or delete route, because an
-audit trail you can edit is not an audit trail.
+`consent_events` is append-only. No update or delete route, because an audit
+trail you can edit is not an audit trail.
 
 An opt-in must carry `evidence_url` or `evidence_note` — a database CHECK, not
-just a Worker rule, so it survives someone inserting rows with `psql`. The one
-exception is `method: 'inbound_message'`: their own first message to you *is*
-the evidence. Opt-outs are always recordable with no evidence at all; when
-someone says stop, recording it must never fail on a paperwork rule.
+just a Worker rule, so it survives someone inserting rows with `psql`. The
+exception is `inbound_message`: their own message is the evidence. Opt-outs are
+always recordable with no evidence at all; when someone says stop, recording it
+must never fail on a paperwork rule.
 
 `contacts.opt_in_state` is a cached read of the ledger. Nothing but the consent
-endpoint writes it — `parseContact` drops the field, so a spreadsheet import
-cannot mark a cold list as consenting.
+paths write it — `parseContact` drops the field, so an import cannot mark a cold
+list as consenting.
 
-## What this does not do
+STOP is handled in English and Arabic (إيقاف, الغاء, توقف, لا تراسلني…), with
+alef forms normalised so a different keyboard still opts someone out. A message
+that contains a stop word opts out even if it also asks a question: being wrong
+that way costs a lead, being wrong the other way costs the number.
 
-- **Collect opt-ins.** It records them. Getting them is a separate job: a
-  click-to-WhatsApp ad, a valuation form on your site, a QR code on a board, or
-  simply asking during a call you were already having. Past SMS consent, a
-  pre-checked box, and a purchased list do not count.
-- **Import sheets.** `POST /api/properties` and `POST /api/contacts` take one
-  row at a time. Bulk import is not written yet.
-- **Receive messages.** No inbound webhook, so `contacts.last_inbound_at` is
-  set by whatever writes it. Wire the LetsBot webhook to keep the 24h window
-  and the claim guard accurate.
+## What this still does not do
+
+- **Import sheets.** `POST /api/properties` and `/api/contacts` take one row at
+  a time. Bulk import is not written — and importing contacts would not make
+  them messageable anyway.
+- **Reply to anyone.** Inbound messages are recorded, not answered. LetsBot's
+  own AI bot or shared inbox is the right tool for that.
 
 ## Security model
 
 The Worker holds the Supabase service-role key, which bypasses RLS. That makes
-the Worker itself the security boundary, which is why `API_TOKEN` guards every
-`/api` route and an unset token fails closed. RLS is enabled on all five tables
-with no policies, so the anon key reads nothing.
+the Worker the security boundary, which is why `API_TOKEN` guards every `/api`
+route and an unset token fails closed. RLS is on for all six tables with no
+policies, so the anon key reads nothing.
 
-The dashboard stores the token in `localStorage` and sends it per request, so
-it stays out of URLs, browser history and logs. Both `schema.ts` and `ui.ts`
-reject non-http(s) URLs — listing sheets are untrusted input, and a
-`javascript:` URL rendered into an anchor would execute on this origin and
-could read that token.
+Two routes are public by necessity. `/optin` can only ever create an opt-in for
+a number the submitter typed — it never reads one back. `/hooks/inbound/:secret`
+is authenticated by a path secret compared in constant time; a wrong secret gets
+a 404, not a 403, so probing reveals nothing.
+
+The opt-in page ships a strict CSP and uses no inline scripts. Both `schema.ts`
+and `ui.ts` reject non-http(s) URLs — listing sheets are untrusted input, and a
+`javascript:` URL rendered into an anchor would execute on this origin and could
+read the API token out of localStorage.
 
 ## Tests
 
@@ -179,7 +246,11 @@ could read that token.
 npm run check     # typecheck + tests
 ```
 
-93 tests. The ones worth reading first are in `test/consent.test.ts` (every way
-a campaign gets a number restricted) and `test/worker.test.ts` (proof the gate
-is actually wired into the paths that can send — a perfect gate nobody calls
-protects nothing).
+164 tests. Read these first:
+
+- `test/consent.test.ts` — every way a campaign gets a number restricted.
+- `test/autopilot.test.ts` — the unattended path end to end. It proves the cron
+  will not message someone without consent, will not message anyone twice
+  across two ticks, parks itself when Meta pauses a template, and stops the
+  batch on a provider failure rather than hammering a suspended number.
+- `test/inbound.test.ts` — every way a person types "stop".

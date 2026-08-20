@@ -37,6 +37,9 @@ export const OUTREACH_STATUSES = [
   'cancelled',
 ] as const
 export const LISTING_TYPES = ['sale', 'rent'] as const
+export const CAMPAIGN_STATUSES = ['draft', 'active', 'paused', 'done'] as const
+
+export type CampaignStatus = (typeof CAMPAIGN_STATUSES)[number]
 
 export type ContactType = (typeof CONTACT_TYPES)[number]
 export type OptInState = (typeof OPT_IN_STATES)[number]
@@ -77,6 +80,11 @@ export interface Contact {
   source: string | null
   source_detail: string | null
   opt_in_state: OptInState
+  /**
+   * How the current opt-in was obtained, denormalised from consent_events so
+   * the gate can ask whether this person came to us without a second query.
+   */
+  opt_in_method: ConsentMethod | null
   opted_in_at: string | null
   opted_out_at: string | null
   last_inbound_at: string | null
@@ -112,8 +120,27 @@ export interface MessageTemplate {
   updated_at: string
 }
 
+export interface Campaign {
+  id: string
+  name: string
+  template_id: string
+  status: CampaignStatus
+  audience_contact_type: ContactType | null
+  audience_language: string | null
+  /** Ordered `contact.<col>` / `property.<col>` sources for {{1}}, {{2}} … */
+  variable_sources: string[]
+  property_id: string | null
+  daily_cap: number
+  batch_size: number
+  sent_count: number
+  last_run_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface OutreachMessage {
   id: string
+  campaign_id: string | null
   contact_id: string
   property_id: string | null
   template_id: string | null
@@ -329,6 +356,42 @@ const TEMPLATE_RULES: Rules = {
   strings: ['name', 'language', 'body', 'meta_rejection_reason', 'notes'],
   stringArrays: ['variables'],
   enums: { category: TEMPLATE_CATEGORIES, meta_status: META_STATUSES },
+}
+
+const CAMPAIGN_COLUMNS = [
+  'name', 'template_id', 'status', 'audience_contact_type', 'audience_language',
+  'variable_sources', 'property_id', 'daily_cap', 'batch_size',
+]
+
+const CAMPAIGN_RULES: Rules = {
+  required: ['name', 'template_id'],
+  strings: ['name', 'template_id', 'audience_language', 'property_id'],
+  stringArrays: ['variable_sources'],
+  // Bounded here as well as by the database CHECK. An unattended sender with
+  // an unbounded daily cap is the failure mode this whole file guards against,
+  // and a 400 naming the field beats a constraint violation.
+  numbers: { daily_cap: [1, 1000], batch_size: [1, 100] },
+  enums: {
+    status: CAMPAIGN_STATUSES,
+    audience_contact_type: CONTACT_TYPES,
+  },
+}
+
+/**
+ * `sent_count` and `last_run_at` are absent: they are the runner's own record
+ * of what it did, and a caller that could edit them could hide a campaign that
+ * had already blown through its cap.
+ */
+export function parseCampaign(body: unknown, partial = false) {
+  const values = validate(body, CAMPAIGN_COLUMNS, CAMPAIGN_RULES, { partial })
+  for (const source of (values.variable_sources as string[] | undefined) ?? []) {
+    if (!/^(contact|property)\.[a-z_]+$/.test(source)) {
+      throw new ValidationError(
+        `variable source "${source}" must look like contact.full_name or property.area`,
+      )
+    }
+  }
+  return values
 }
 
 export function parseProperty(body: unknown, partial = false) {

@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { isLive, limitsFrom, type Env } from '../src/index'
+import worker, { isAutopilot, isLive, limitsFrom, type Env } from '../src/index'
 
 const ROOT = join(import.meta.dirname, '..')
 
@@ -31,10 +31,42 @@ describe('isLive', () => {
   })
 })
 
+describe('isAutopilot', () => {
+  it('arms only on the exact string "true"', () => {
+    expect(isAutopilot(env({ OUTREACH_AUTOPILOT: 'true' }))).toBe(true)
+  })
+
+  it('stays off for every other value', () => {
+    // Deploying the Worker must not by itself start a campaign.
+    for (const value of ['false', '0', 'no', 'TRUE', 'yes', '', undefined]) {
+      expect(isAutopilot(env({ OUTREACH_AUTOPILOT: value })), String(value)).toBe(false)
+    }
+  })
+
+  it('is independent of live sending', () => {
+    // Autopilot in dry run is the rehearsal: the schedule fires, real contacts
+    // are selected, payloads are built and logged, nothing is transmitted.
+    const rehearsal = env({ OUTREACH_AUTOPILOT: 'true', OUTREACH_LIVE: 'false' })
+    expect(isAutopilot(rehearsal)).toBe(true)
+    expect(isLive(rehearsal)).toBe(false)
+  })
+})
+
 describe('limitsFrom', () => {
   it('reads the configured caps', () => {
     expect(limitsFrom(env({ OUTREACH_MAX_PER_CONTACT: '3', OUTREACH_WINDOW_DAYS: '14' })))
-      .toEqual({ maxPerContact: 3, windowDays: 14 })
+      .toEqual({ maxPerContact: 3, windowDays: 14, oncePerContact: true })
+  })
+
+  it('keeps the once-per-contact rule non-configurable', () => {
+    // One message per person is the policy, not a setting. There is no env var
+    // that turns it off, and the database enforces it again.
+    for (const value of ['false', 'no', '0', undefined]) {
+      expect(
+        limitsFrom(env({ OUTREACH_MAX_PER_CONTACT: value })).oncePerContact,
+        String(value),
+      ).toBe(true)
+    }
   })
 
   it('falls back to safe values rather than permissive ones', () => {
@@ -59,6 +91,25 @@ describe('wrangler.toml', () => {
     // A repository that deploys live-by-default sends its first campaign
     // before anyone has read the send path.
     expect(toml).toMatch(/OUTREACH_LIVE\s*=\s*"false"/)
+  })
+
+  it('ships with autopilot disarmed', () => {
+    // Deploying must not by itself start messaging people.
+    expect(toml).toMatch(/OUTREACH_AUTOPILOT\s*=\s*"false"/)
+  })
+
+  it('has a cron trigger, or autopilot never fires', () => {
+    expect(toml).toMatch(/\[triggers\]/)
+    expect(toml).toMatch(/crons\s*=/)
+  })
+
+  it('exports a scheduled handler for that cron to call', () => {
+    // The cron and the handler are configured in two different files. If the
+    // export were missing or renamed, Cloudflare would fire the trigger every
+    // hour into nothing, and the only symptom would be that no message ever
+    // goes out — which looks exactly like an empty contact list.
+    expect(typeof worker.scheduled).toBe('function')
+    expect(typeof worker.fetch).toBe('function')
   })
 
   it('keeps secrets out', () => {

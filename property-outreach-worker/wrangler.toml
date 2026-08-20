@@ -52,6 +52,13 @@ OUTREACH_WINDOW_DAYS = "30"
 # Shown on the public opt-in page at /optin.
 BUSINESS_NAME = "our team"
 
+# Your business WhatsApp number, E.164. Powers the "Message us on WhatsApp"
+# button on /optin, which is the PREFERRED way onto the list: a message from
+# the person's own handset proves the number is theirs, where a number typed
+# into a form is only self-asserted. Leave empty and the page falls back to the
+# form alone.
+WHATSAPP_NUMBER = ""
+
 # Hourly. Each tick advances every active campaign by one batch_size, so the
 # pace is set per campaign rather than here — a shorter cron would not send
 # more, it would just reach the daily cap earlier in the day.

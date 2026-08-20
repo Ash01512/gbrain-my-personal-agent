@@ -22,3 +22,6 @@ LETSBOT_API_KEY=""
 # Without it, STOP replies are never recorded — the one failure here that
 # reliably ends a number.
 INBOUND_WEBHOOK_SECRET=""
+
+# Not secrets — set in wrangler.toml [vars], listed here for completeness:
+#   BUSINESS_NAME, WHATSAPP_NUMBER, OUTREACH_LIVE, OUTREACH_AUTOPILOT

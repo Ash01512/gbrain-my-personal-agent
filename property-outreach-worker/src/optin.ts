@@ -119,6 +119,18 @@ const PAGE_STYLE = `
   }
   :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
   .note { font-size: 13px; color: var(--muted); margin-top: 16px; }
+  a.wa {
+    display: block; text-align: center; text-decoration: none;
+    background: var(--accent); color: var(--on-accent);
+    font-weight: 600; border-radius: 8px; padding: 13px;
+  }
+  .or {
+    display: flex; align-items: center; gap: 12px;
+    color: var(--muted); font-size: 13px; margin: 20px 0 4px;
+  }
+  .or::before, .or::after {
+    content: ''; flex: 1; height: 1px; background: var(--line);
+  }
   .error {
     border: 1px solid var(--danger); color: var(--danger);
     border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 14px;
@@ -141,7 +153,31 @@ function escapeHtml(value: string): string {
  * Meta's opt-in guidance asks for and what stops the first message being read
  * as spam by someone who has forgotten signing up.
  */
-export function optInPageHtml(businessName: string, error?: string): string {
+/**
+ * Builds the wa.me deep link, or null if no business number is configured.
+ *
+ * This is the *preferred* way onto the list, and the reason is consent quality.
+ * A typed phone number is self-asserted: nothing stops someone entering a
+ * number they do not own, and an unattended sender would then message a
+ * stranger who never agreed to anything. A message sent from the person's own
+ * handset cannot be forged that way — it arrives with their real number
+ * attached, and the inbound webhook records it as `inbound_message` consent
+ * with the message itself as the evidence.
+ */
+export function whatsappLink(businessNumber: string | undefined): string | null {
+  if (!businessNumber) return null
+  const digits = businessNumber.replace(/[^\d]/g, '')
+  if (!/^[1-9]\d{7,14}$/.test(digits)) return null
+  const text = encodeURIComponent('Hi, please send me property updates.')
+  return `https://wa.me/${digits}?text=${text}`
+}
+
+export function optInPageHtml(
+  businessName: string,
+  error?: string,
+  businessNumber?: string,
+): string {
+  const link = whatsappLink(businessNumber)
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -158,6 +194,15 @@ export function optInPageHtml(businessName: string, error?: string): string {
       matches what you are after — not a newsletter.</p>
 
     ${error ? `<div class="error">${escapeHtml(error)}</div>` : ''}
+
+    ${
+      link
+        ? `<a class="wa" href="${escapeHtml(link)}">Message us on WhatsApp</a>
+    <p class="note" style="margin-top:10px">Fastest way — it opens WhatsApp with a
+      message ready to send, and we will know it is really your number.</p>
+    <div class="or"><span>or leave your number</span></div>`
+        : ''
+    }
 
     <form method="POST">
       <label for="name">Your name</label>

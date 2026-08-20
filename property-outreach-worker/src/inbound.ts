@@ -40,7 +40,13 @@ const OPT_OUT_WORDS = [
   'remove me',
   'opt out',
   'optout',
-  'cancel',
+  // Bare "cancel" is deliberately NOT here. In a property conversation it far
+  // more often means "cancel the viewing" or "cancel the appointment" than
+  // "cancel your messages", and silently unsubscribing a live lead who was
+  // rescheduling is a real cost with no compensating safety benefit — WhatsApp
+  // itself surfaces a Stop button, and the words below cover the intent.
+  'cancel subscription',
+  'cancel messages',
   'do not contact',
   "don't contact",
   'no more messages',

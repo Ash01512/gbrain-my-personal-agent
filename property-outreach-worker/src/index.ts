@@ -86,6 +86,8 @@ export interface Env {
   INBOUND_WEBHOOK_SECRET?: string
   /** Shown on the public opt-in page. */
   BUSINESS_NAME?: string
+  /** The business WhatsApp number, E.164. Powers the wa.me link on /optin. */
+  WHATSAPP_NUMBER?: string
   APP_TIMEZONE?: string
 }
 
@@ -178,15 +180,18 @@ export default {
     const businessName = env.BUSINESS_NAME || 'our team'
 
     if (match.name === 'optin-form') {
-      return html(optInPageHtml(businessName))
+      return html(optInPageHtml(businessName, undefined, env.WHATSAPP_NUMBER))
     }
 
     if (match.name === 'optin-submit') {
       if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
-        return html(optInPageHtml(businessName, 'Sorry — we could not save that. Try again later.'), 503)
+        return html(
+          optInPageHtml(businessName, 'Sorry — we could not save that. Try again later.', env.WHATSAPP_NUMBER),
+          503,
+        )
       }
       const db = new Supabase(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
-      return optInSubmit(request, db, businessName)
+      return optInSubmit(request, db, businessName, env.WHATSAPP_NUMBER)
     }
 
     if (match.name === 'inbound') {
@@ -785,21 +790,27 @@ export async function runCampaign(
     ? await db.getById<Property>('properties', campaign.property_id)
     : null
 
-  // Over-fetch: some candidates will already have been messaged by this
-  // campaign, and those are filtered in memory rather than with a join
-  // PostgREST would make awkward.
-  const candidates = await db.list<Contact>('contacts', {
-    filters: audienceFilters(campaign),
-    order: 'created_at.asc',
-    limit: Math.min(allowance * 5, 200),
-  })
+  const reclaimed = await reclaimStuckSending(db, campaign.id, now)
+  if (reclaimed > 0) {
+    noteReason(report, `reclaimed ${reclaimed} row(s) stranded in sending`)
+  }
 
   const alreadyDone = await sentContactIds(db, campaign.id)
   const limits = limitsForCampaign(baseLimits)
 
+  // Paged rather than one over-fetched read.
+  //
+  // A single `limit: allowance * 5` looked sufficient and was not: contacts are
+  // ordered oldest-first, so once a campaign has worked through its first few
+  // hundred people, every row in that window is already done and the run sends
+  // nothing while reporting no problem. Paging walks past them instead.
+  const candidates = await collectCandidates(db, campaign, alreadyDone, allowance)
+  if (candidates.length === 0) {
+    report.stoppedBecause = 'no eligible contacts left in this audience'
+  }
+
   for (const contact of candidates) {
     if (report.sent >= allowance) break
-    if (alreadyDone.has(contact.id)) continue
     report.considered += 1
 
     const built = draftFor(campaign, template, contact, property, renderTemplate)
@@ -896,14 +907,102 @@ export async function runCampaign(
   return report
 }
 
-/** Contacts this campaign has already produced a message for. */
+/** How many rows one page of a paged read pulls. */
+const PAGE = 500
+
+/**
+ * Walks the audience until it has enough contacts this campaign has not
+ * already handled.
+ *
+ * Stops as soon as it has `wanted`, so a campaign near the start of its list
+ * costs one query. The page budget bounds the worst case — a campaign whose
+ * audience is entirely done exits after 20 pages rather than paging forever
+ * inside a cron tick that has a wall-clock limit.
+ */
+async function collectCandidates(
+  db: Supabase,
+  campaign: Campaign,
+  alreadyDone: Set<string>,
+  wanted: number,
+): Promise<Contact[]> {
+  const picked: Contact[] = []
+  for (let page = 0; page < 20 && picked.length < wanted; page++) {
+    const rows = await db.list<Contact>('contacts', {
+      filters: audienceFilters(campaign),
+      order: 'created_at.asc',
+      limit: PAGE,
+      offset: page * PAGE,
+    })
+    for (const row of rows) {
+      if (alreadyDone.has(row.id)) continue
+      picked.push(row)
+      if (picked.length >= wanted) break
+    }
+    if (rows.length < PAGE) break
+  }
+  return picked
+}
+
+/**
+ * Contacts this campaign has already produced a message for.
+ *
+ * Paged rather than capped. A single capped read looked fine and was not: once
+ * a campaign passed the cap, the set came back incomplete, contacts that had
+ * already been messaged looked eligible again, and every one of them was
+ * re-drafted only to be rejected by the database's unique index. The campaign
+ * would then spend its whole batch losing races and send nothing — a stall that
+ * reports success, which is the worst kind for something nobody is watching.
+ */
 async function sentContactIds(db: Supabase, campaignId: string): Promise<Set<string>> {
-  const rows = await db.list<{ contact_id: string }>('outreach_messages', {
-    select: 'contact_id',
-    filters: { campaign_id: `eq.${campaignId}`, status: 'neq.cancelled' },
-    limit: 1000,
+  const seen = new Set<string>()
+  for (let page = 0; page < 40; page++) {
+    const rows = await db.list<{ contact_id: string }>('outreach_messages', {
+      select: 'contact_id',
+      filters: { campaign_id: `eq.${campaignId}`, status: 'neq.cancelled' },
+      order: 'created_at.asc',
+      limit: PAGE,
+      offset: page * PAGE,
+    })
+    for (const row of rows) seen.add(row.contact_id)
+    if (rows.length < PAGE) return seen
+  }
+  // 20,000 rows in one campaign. Say so rather than silently under-reporting:
+  // past this point the unique index is the only thing preventing duplicates.
+  console.warn(`campaign ${campaignId}: more than ${40 * PAGE} messages, dedupe set truncated`)
+  return seen
+}
+
+/**
+ * Frees rows stranded mid-send.
+ *
+ * A row is written as `sending` before the request goes out, so an isolate that
+ * dies in flight leaves it there forever. Nothing else would ever clear it: the
+ * campaign's dedupe filter counts it as done, and the cancel route refuses to
+ * touch a `sending` row. That contact would simply never be messaged, silently.
+ *
+ * Only rows older than the window are touched, so a send genuinely in progress
+ * in a concurrent tick is left alone. They become `failed` rather than
+ * `approved`: we do not know whether the provider received the message, and
+ * assuming it did not is how someone gets it twice.
+ */
+async function reclaimStuckSending(db: Supabase, campaignId: string, now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - 15 * 60 * 1000).toISOString()
+  const stuck = await db.list<{ id: string }>('outreach_messages', {
+    select: 'id',
+    filters: {
+      campaign_id: `eq.${campaignId}`,
+      status: 'eq.sending',
+      updated_at: `lt.${cutoff}`,
+    },
+    limit: 50,
   })
-  return new Set(rows.map((row) => row.contact_id))
+  for (const row of stuck) {
+    await db.update('outreach_messages', row.id, {
+      status: 'failed',
+      error: 'stranded in sending — the run did not finish; delivery unknown',
+    })
+  }
+  return stuck.length
 }
 
 async function countSentToday(
@@ -993,13 +1092,14 @@ async function optInSubmit(
   request: Request,
   db: Supabase,
   businessName: string,
+  businessNumber?: string,
 ): Promise<Response> {
   let submission: ReturnType<typeof parseSubmission>
   try {
     submission = parseSubmission(new URLSearchParams(await request.text()))
   } catch (error) {
     const message = error instanceof OptInError ? error.message : 'Something went wrong.'
-    return html(optInPageHtml(businessName, message), 400)
+    return html(optInPageHtml(businessName, message, businessNumber), 400)
   }
 
   const at = new Date().toISOString()

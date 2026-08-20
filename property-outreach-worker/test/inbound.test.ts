@@ -62,6 +62,20 @@ describe('classifyInbound — opt-out', () => {
       .toBe('opt_out')
   })
 
+  it('does not treat a bare "cancel" as an opt-out', () => {
+    // In a property conversation "cancel" almost always means the viewing, not
+    // the messages. Unsubscribing a live lead who was rescheduling is a real
+    // cost with no safety benefit — WhatsApp surfaces its own Stop button.
+    expect(classifyInbound('Can I cancel the viewing on Sunday?')).toBe('opt_in')
+    expect(classifyInbound('I need to cancel our appointment')).toBe('opt_in')
+    expect(classifyInbound('cancel tomorrow please')).toBe('opt_in')
+  })
+
+  it('still opts out when cancel is clearly about the messages', () => {
+    expect(classifyInbound('cancel subscription')).toBe('opt_out')
+    expect(classifyInbound('please cancel messages')).toBe('opt_out')
+  })
+
   it('does not fire on a stop word inside another word', () => {
     // A guard that opts people out of a conversation they wanted is its own
     // kind of failure.

@@ -218,11 +218,16 @@ create index if not exists outreach_messages_contact_sent_idx
   on public.outreach_messages (contact_id, sent_at desc)
   where sent_at is not null;
 
--- One draft per contact per property per template. A re-run of the drafting
--- agent updates its own row instead of stacking a second copy of the same
--- message onto a queue a human has to read.
+-- One draft per contact per property per template.
+--
+-- NULLS NOT DISTINCT is load-bearing and was missing in the first version of
+-- this file. Postgres treats NULLs as distinct in a unique index by default, so
+-- without it (contact, NULL, template) repeats without limit — and a draft with
+-- no property attached is the common case, which meant the index did nothing
+-- for most rows. Requires Postgres 15+.
 create unique index if not exists outreach_messages_dedupe_key
   on public.outreach_messages (contact_id, property_id, template_id)
+  nulls not distinct
   where status in ('draft','blocked','approved');
 
 -- ── RLS ──────────────────────────────────────────────────────────────────

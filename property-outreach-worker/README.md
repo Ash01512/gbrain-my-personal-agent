@@ -140,21 +140,31 @@ Verifying a send path by sending is how a number picks up its first block.
 
 ## Getting people onto the list
 
-This is now the only thing standing between you and a working system, and no
-code can do it for you. The Worker serves a public opt-in page at **`/optin`**
-that records consent with real evidence — timestamp, IP, country, user agent,
-and the fact that the checkbox was unticked by default. Point these at it:
+This is the only thing standing between you and a working system, and no code
+can do it for you. The Worker serves a public opt-in page at **`/optin`**.
 
-- A **click-to-WhatsApp ad** — the highest-volume route, and Meta treats the
-  tap itself as opt-in.
-- A **QR code** on a board, a brochure, a business card.
-- A link in your listings, your email footer, your Instagram bio.
+The page leads with a **"Message us on WhatsApp"** button (a `wa.me` deep link,
+configured via `WHATSAPP_NUMBER`) and offers the form underneath. That order is
+deliberate, and it is a consent-quality decision rather than a design one:
 
-And the free one: anyone who messages your business number first is recorded as
-`inbound_message` consent automatically by the webhook, because their own
-message is the evidence.
+> A typed phone number is **self-asserted**. Nothing stops someone entering a
+> number they do not own, and an unattended sender would then message a stranger
+> who never agreed to anything. A message sent from the person's own handset
+> cannot be forged that way — it arrives with their real number attached, and
+> the inbound webhook records it as `inbound_message` consent with the message
+> itself as the evidence.
 
-Numbers from listing sheets are not on this list and cannot be added to it by
+So prefer, in this order:
+
+1. **Click-to-WhatsApp ads** and the `wa.me` button — consent proven by the
+   handset. Meta treats the tap itself as opt-in.
+2. **A QR code** on a board, a brochure, a card, pointing at `/optin`.
+3. **The form**, for people who will not click through. It records real evidence
+   (timestamp, IP, country, user agent, unticked-by-default checkbox), but that
+   evidence shows *a submission happened*, not that the submitter owned the
+   number.
+
+Numbers from listing sheets are not on this list and cannot be added by
 importing them. That is the design working, not a gap.
 
 ## API
@@ -215,6 +225,26 @@ alef forms normalised so a different keyboard still opts someone out. A message
 that contains a stop word opts out even if it also asks a question: being wrong
 that way costs a lead, being wrong the other way costs the number.
 
+## Known limits
+
+Found in review and deliberately not fixed. Each is a real edge, stated so it is
+a decision rather than a surprise:
+
+- **The opt-in form cannot verify number ownership.** Mitigated by leading with
+  the `wa.me` button (above), not eliminated. If you need certainty, drop the
+  form and run `/optin` as a WhatsApp link only.
+- **`/optin` has no rate limit.** A script could create thousands of contact
+  rows. They would all be `opted_in`, so a campaign would message them. Fixing
+  it properly needs a KV namespace or Durable Object for counters; until then,
+  watch `GET /api/stats` for a contact count that moves without a campaign
+  behind it.
+- **`campaigns.sent_count` is a read-modify-write.** Two overlapping ticks could
+  lose an increment. It is a display counter only — nothing gates on it; the
+  caps read `outreach_messages` directly.
+- **A campaign past 20,000 messages** truncates its dedupe set and logs a
+  warning. The unique index still prevents duplicates; the run just does more
+  wasted work.
+
 ## What this still does not do
 
 - **Import sheets.** `POST /api/properties` and `/api/contacts` take one row at
@@ -246,11 +276,13 @@ read the API token out of localStorage.
 npm run check     # typecheck + tests
 ```
 
-164 tests. Read these first:
+188 tests. Read these first:
 
 - `test/consent.test.ts` — every way a campaign gets a number restricted.
 - `test/autopilot.test.ts` — the unattended path end to end. It proves the cron
   will not message someone without consent, will not message anyone twice
   across two ticks, parks itself when Meta pauses a template, and stops the
   batch on a provider failure rather than hammering a suspended number.
-- `test/inbound.test.ts` — every way a person types "stop".
+- `test/inbound.test.ts` — every way a person types "stop", and the ways that
+  look like one but are not ("can I cancel the viewing?").
+- `test/optin.test.ts` — the public page, which is the only door in.

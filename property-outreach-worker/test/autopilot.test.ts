@@ -158,10 +158,20 @@ beforeEach(() => {
             const value = row[column]
             return typeof value === 'string' && value >= floor
           })
+        } else if (expression.startsWith('lt.')) {
+          const ceiling = expression.slice(3)
+          selected = selected.filter((row) => {
+            const value = row[column]
+            return typeof value === 'string' && value < ceiling
+          })
         }
       }
+      // Offset is applied, not just skipped as a filter name. Paging is the
+      // mechanism two of the fixes below rely on, so a fake that ignored it
+      // would let a stall pass as a green test.
       const limit = Number(url.searchParams.get('limit') ?? '1000')
-      return new Response(JSON.stringify(selected.slice(0, limit)), { status: 200 })
+      const offset = Number(url.searchParams.get('offset') ?? '0')
+      return new Response(JSON.stringify(selected.slice(offset, offset + limit)), { status: 200 })
     }
 
     if (method === 'POST') {
@@ -323,6 +333,83 @@ describe('tick — pace', () => {
     expect(reports[0]!.failed).toBe(1)
     expect(reports[0]!.stoppedBecause).toContain('provider failure')
     expect(sends).toHaveLength(0)
+  })
+})
+
+describe('tick — regressions found in review', () => {
+  it('keeps sending once the campaign has worked past its first page', async () => {
+    // The stall. Contacts are ordered oldest-first, so a campaign that has
+    // already handled its earliest people used to fetch a window containing
+    // only done contacts, send nothing, and report no problem — the worst
+    // failure shape for something nobody is watching.
+    tables.contacts = Array.from({ length: 12 }, (_, i) => contact(`c${i + 1}`))
+    tables.campaigns = [campaign({ batch_size: 2 })]
+
+    // Nine of the twelve have already had their message.
+    tables.outreach_messages = tables.contacts.slice(0, 9).map((row, i) => ({
+      id: `old-${i}`,
+      campaign_id: CAMPAIGN_ID,
+      contact_id: row.id,
+      status: 'sent',
+      rendered_body: 'already sent',
+      created_at: '2026-08-19T00:00:00Z',
+      sent_at: '2026-08-19T00:00:00Z',
+    }))
+
+    const reports = await tick(ENV, NOW)
+    expect(reports[0]!.sent).toBe(2)
+    expect(sends).toHaveLength(2)
+  })
+
+  it('reports honestly when the audience is exhausted', async () => {
+    tables.outreach_messages = tables.contacts.map((row, i) => ({
+      id: `old-${i}`,
+      campaign_id: CAMPAIGN_ID,
+      contact_id: row.id,
+      status: 'sent',
+      rendered_body: 'already sent',
+      created_at: '2026-08-19T00:00:00Z',
+      sent_at: '2026-08-19T00:00:00Z',
+    }))
+    const reports = await tick(ENV, NOW)
+    expect(reports[0]!.sent).toBe(0)
+    expect(reports[0]!.stoppedBecause).toContain('no eligible contacts')
+  })
+
+  it('frees a row stranded in sending, marking delivery unknown', async () => {
+    // An isolate that dies mid-send leaves the row in `sending`. Nothing else
+    // clears it: the dedupe filter counts it as done and cancel refuses to
+    // touch it, so that contact would never be messaged again.
+    tables.outreach_messages = [{
+      id: 'stuck-1',
+      campaign_id: CAMPAIGN_ID,
+      contact_id: 'c1',
+      status: 'sending',
+      rendered_body: 'half sent',
+      created_at: '2026-08-20T09:00:00Z',
+      updated_at: '2026-08-20T09:00:00Z',
+    }]
+
+    await tick(ENV, NOW)
+    const row = tables.outreach_messages.find((r) => r.id === 'stuck-1')!
+    expect(row.status).toBe('failed')
+    // Not "approved": we do not know whether the provider received it, and
+    // assuming it did not is how someone gets the same message twice.
+    expect(String(row.error)).toContain('delivery unknown')
+  })
+
+  it('leaves a send that is still in flight alone', async () => {
+    tables.outreach_messages = [{
+      id: 'inflight',
+      campaign_id: CAMPAIGN_ID,
+      contact_id: 'c1',
+      status: 'sending',
+      rendered_body: 'in flight',
+      created_at: '2026-08-20T11:59:00Z',
+      updated_at: '2026-08-20T11:59:00Z',
+    }]
+    await tick(ENV, NOW)
+    expect(tables.outreach_messages.find((r) => r.id === 'inflight')!.status).toBe('sending')
   })
 })
 

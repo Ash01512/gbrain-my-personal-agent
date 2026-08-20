@@ -101,7 +101,7 @@ a score can be argued with — which is the only kind of score worth keeping.
 
 **Domain floor: a role scoring under 2 on domain fit is never queued, whatever
 it totals.** Location and seniority are worth four points between them, so
-without this a Dubai site-engineering role at the right level reaches 6.0 and
+without this a Dubai site-engineering role at the right level reaches 6.5 and
 lands in the queue — a step backwards presented as a match. Domain fit is the
 only axis that answers "is this the right job"; the rest only adjust how good
 an instance of it this is.

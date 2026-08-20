@@ -26,7 +26,7 @@ Then, in order:
 
 ```bash
 SUPABASE_DB_URL='postgresql://...' npm run migrate   # 1. schema
-npm run check                                        # 2. typecheck + 150 tests
+npm run check                                        # 2. typecheck + 151 tests
 npm run dev                                          # 3. http://localhost:8787
 npm run deploy                                       # 4. production + smoke test
 ```
@@ -359,7 +359,7 @@ npm run typecheck
 npm test
 ```
 
-150 tests. Most cover the pure helpers — schema validation, route matching,
+151 tests. Most cover the pure helpers — schema validation, route matching,
 query building, the auth comparison, the Supabase error mapping — and
 `test/worker.test.ts` drives the fetch handler itself, which is where the auth
 gate, the error mapping and the `applied_on` rules actually compose.

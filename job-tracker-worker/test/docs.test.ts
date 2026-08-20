@@ -93,6 +93,37 @@ describe('the docs do not claim things that are not true', () => {
     }
   })
 
+  it('the scoring rubric worked examples actually add up', () => {
+    // A reviewer checking a rubric checks it with a calculator. The prose said
+    // the floor example "reaches 6.0" while the table it pointed at added to
+    // 6.5 — same posting, two numbers, and the arithmetic is the whole reason
+    // the domain floor exists. A rubric you cannot reproduce is not a rubric.
+    const doc = read(join(REPO, 'docs', 'agent-loop.md'))
+    const rows = [...doc.matchAll(
+      /^\| ([^|]+?) \|((?: \*{0,2}[\d.]+\*{0,2} \|){5})\s*\*{0,2}([\d.]+)\*{0,2}\s*\|([^|]*)\|$/gm,
+    )]
+
+    expect(rows.length, 'the worked-examples table moved or changed shape').toBe(7)
+
+    for (const [, posting, axesRaw, totalRaw, outcome] of rows) {
+      const axes = axesRaw.split('|').filter((s) => s.trim()).map((s) => Number(s.replace(/\*/g, '')))
+      const [, , location] = axes
+      const sum = axes.reduce((a, b) => a + b, 0)
+      // A zero on location is a hard zero, not an addend — the total is 0
+      // however well the role scores everywhere else.
+      const expected = location === 0 ? 0 : sum
+      expect(Number(totalRaw), `"${posting.trim()}" totals ${totalRaw}, not ${expected}`).toBe(expected)
+
+      // The floor is a separate rule from the threshold: this row has to keep
+      // clearing 6 numerically, or it stops demonstrating why the floor exists.
+      if (outcome.includes('domain floor')) {
+        expect(axes[0], 'the floor example must score under 2 on domain').toBeLessThan(2)
+        expect(Number(totalRaw), 'the floor example must still clear the threshold').toBeGreaterThanOrEqual(6)
+        expect(doc, 'the prose quotes a different total than the table').toContain(`reaches ${totalRaw}`)
+      }
+    }
+  })
+
   it('names the repository that actually hosts this', () => {
     // The CV links here. A 404 costs more than an unfashionable repo name.
     for (const path of DOCS) {

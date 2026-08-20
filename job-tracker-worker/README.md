@@ -385,11 +385,18 @@ URL there runs on the Worker's own origin, where it can read `API_TOKEN` out of
 because the apply button reads its URL back from `dataset`, which decodes the
 entity escaping that made the attribute safe.
 
-## Not yet verified
+## Verified, and what that means
 
-The Worker has not been run against the real Supabase project — that needs the
-service-role key, which is not available in the environment where this was
-built. Routing, auth, validation, and error mapping were all exercised against
+Deployed to `job-tracker-worker.ashabbas-2023.workers.dev` on 2026-08-20, with
+all three secrets set — `/api/health` returns `ok: true`.
+
+That proves configuration, not connectivity: health deliberately never touches
+Supabase, so it cannot tell you whether the credentials actually work. The
+dashboard's counters can, because they can only come from a query that reached
+Postgres.
+
+The Worker was built without access to the real Supabase project — the
+service-role key was not available in the environment where this was written. Routing, auth, validation, and error mapping were all exercised against
 a live `wrangler dev`; the actual PostgREST round-trip was exercised only
 against a stubbed `fetch`. In particular the double-quoted filter values that
 `q` now builds, and `applied_on=lte.<today>` on the daily rollup, are correct

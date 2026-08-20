@@ -161,12 +161,14 @@ itself distributable — the repo carries its prompt and setup instructions inst
 
 ### Remaining
 
-- **The three secrets** on the Worker: `SUPABASE_URL`,
-  `SUPABASE_SERVICE_ROLE_KEY`, `API_TOKEN`. Until they are set, every `/api`
-  route 401s and `/api/health` answers 503 — deliberately, so a half-configured
-  deployment refuses rather than leaks.
-- **The smoke test** against the live URL. That is what turns "committed" into
-  "deployed" in the README, the design doc and the CV, and nothing else does.
+- ~~**The three secrets**~~ DONE — set on the Worker 2026-08-20;
+  `/api/health` returns `ok: true` for all three.
+- ~~**Deployment**~~ DONE — `job-tracker-worker.ashabbas-2023.workers.dev`,
+  built from `main` by Cloudflare's Git integration.
+- **Confirm the round trip.** `/api/health` never touches Supabase by design,
+  so a green health check proves configuration and not connectivity. Loading
+  the dashboard and seeing the counters populate proves it, because those
+  figures can only come from a query that reached Postgres.
 - **The Routine**, per step 5.
 - **Seeding `cv_versions`**, per step 6.
 

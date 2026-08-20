@@ -56,10 +56,12 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
    `gbrain-my-personal-agent` to `job-tracker-agent` in GitHub Settings, change
    this line and the Worker README to match — a CV link that 404s costs more
    than an unfashionable repository name.
-1. **Job Tracker is committed and tested, not yet deployed.** The CV template
-   asks for "deployed or committed" — committed is true today. Do not write
-   "deployed" or "live" until the Worker is actually reachable. A reviewer who
-   clicks a dead link is worse off than one who clicks a repository.
+1. **Job Tracker is deployed** as of 2026-08-20, at
+   `job-tracker-worker.ashabbas-2023.workers.dev`, with all three secrets set
+   and `/api/health` returning `ok: true`. "Deployed" is now accurate. The
+   bullet still links the repository rather than the Worker, which is the right
+   call: the Worker requires a token to show anything, so a reviewer clicking it
+   would see a 401 and conclude it was broken.
 2. **1099-INT is missing its engineering-decision bullet.** The other entry has
    one and it is the bullet that gets you asked about the work in an interview.
    Add one line: a real choice you made and why. It is your project and your

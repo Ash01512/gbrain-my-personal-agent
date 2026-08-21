@@ -94,6 +94,46 @@ work on an employer's own systems is legitimate and this is his commit on his
 account. Whether the employer agreed to it being public is a question only he
 can answer, and this CV goes to their competitors.
 
+
+**Property Outreach Worker** | Independent Project | 2026
+
+- A Cloudflare Worker over Supabase running autonomous WhatsApp outreach on the
+  official WhatsApp Business Platform. An hourly cron advances each campaign one
+  batch — select, personalise, gate, send, record — with nobody in the loop.
+- The send gate is a pure function with ten explicit refusal codes and no
+  database, network or clock of its own. WhatsApp permits business-initiated
+  messages only to people who opted in, undocumented consent is the leading cause
+  of account restriction, and there is no appeal — so the one rule that cannot
+  fail open is the one piece of logic testable without a network.
+- Found a bug the suite could not see: every test stubbed the network to succeed,
+  so nothing caught that the campaign read sat above the per-campaign error
+  handling. A database blip took the whole cron tick down. It now fails to an
+  empty tick — state untouched, nothing sent on bad information, a log line
+  instead of a stack trace.
+- Stack: TypeScript, Cloudflare Workers (scheduled), Supabase, WhatsApp Business
+  Platform, Vitest. 194 tests, verified by running the suite rather than counting
+  `it(` declarations — a grep undercounts by 29 because of table-driven cases.
+- github.com/Ash01512/property-outreach-worker
+
+Three projects, three refusals to let a machine finish the job unsupervised: the
+job tracker will not mark an application sent, the CRM pipeline creates drafts,
+and this one will not message a person who never opted in. Reached independently
+on three different problems, which is a better answer to "how do you think about
+automation" than any of them is alone.
+
+### Commit authorship, worth knowing before an interview
+
+Both commits here are authored by `Claude <noreply@anthropic.com>`. So are 38 of
+the 39 on the job tracker. `1099-int-check` (28) and the CRM pipeline (1) are
+under his own name.
+
+This is not a problem to hide — building with Claude Code is the skill the CV is
+arguing for, and the profile README already says so. It does mean an interviewer
+running `git log` sees the tool before the author, so the CV should never imply
+he hand-typed it. The bar is the template's own: every bullet must be
+explainable end to end without help. On this repository that means the consent
+gate, why it is pure, and why the campaign read moved inside the try/catch.
+
 ## Repositories deliberately left off
 
 Audited on 2026-08-21. Two looked like CV material and did not survive the
@@ -124,7 +164,7 @@ check. Both would have been found by any interviewer who clicked.
 
 ### The full account, audited 2026-08-21
 
-Eleven repositories. All were checked — commit count, authorship, file count —
+Twelve repositories. All were checked — commit count, authorship, file count —
 rather than judged by name:
 
 | Repository | Verdict |
@@ -132,6 +172,7 @@ rather than judged by name:
 | `gbrain-my-personal-agent` | **On the CV.** Job Tracker Agent |
 | `1099-int-check` | **On the CV.** 2,394 lines, own test suite |
 | `crm-property-listing-automation` | **On the CV.** 947 lines, one commit, all his |
+| `property-outreach-worker` | **On the CV.** 3,804 lines src, 194 tests passing |
 | `aws-bootcamp-cruddur-2023` | Real, ~60 own commits, but guided coursework — removed from the CV at his request |
 | `Ash01512` | Profile README. Not a project — but see below |
 | `-AI-Governance-Framework` | Someone else's, 24 own lines |

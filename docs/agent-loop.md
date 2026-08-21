@@ -200,13 +200,13 @@ For the first row, the exact `POST /api/queue` body:
 
 ```json
 {
-  "company": "Emirates Group",
-  "role": "Asset Data Lead",
-  "location": "Dubai, UAE",
-  "job_url": "https://ae.indeed.com/viewjob?jk=abc123",
+  "company": "Example Bank",
+  "role": "AI Governance Lead",
+  "location": "Remote — global",
+  "job_url": "https://www.indeed.com/viewjob?jk=abc123",
   "source": "indeed",
-  "match_score": 9.5,
-  "match_rationale": "4 domain — owns the CMMS data model and the condition-based maintenance regime; 2 seniority — Head-level, owns vendor budget; 2 UAE onsite; 0.5 comp not stated; 1 employer-posted with full scope"
+  "match_score": 10,
+  "match_rationale": "4 domain — owns model risk and assurance for deployed AI, and CRISC plus 12 years of regulated operations is the exact pairing asked for; 2 seniority — Lead, owns the control framework; 2 remote-global, no work-location restriction so no sponsorship question; 1 comp band midpoint clears the floor; 1 employer-posted with full scope"
 }
 ```
 

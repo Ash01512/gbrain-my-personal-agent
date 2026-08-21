@@ -74,17 +74,25 @@ to auto-apply, reached independently on a different problem: a machine may
 prepare work at volume, but a person signs it off. That is worth saying out loud
 in an interview.
 
-### Two things to fix in that repository before linking it
+### Personal data scrubbed 2026-08-21
 
-1. **Three third-party email addresses are committed in the clear** —
-   two `@elitehomeuae.com` colleagues and one personal Gmail. Nobody consented to
-   having their address published, and a reviewer who greps for `@` finds them in
-   seconds. Scrub and force-push.
-2. **It names the employer and publishes internal counts** — 517 leads, 1,836
-   listings, the named communities. Authorised work on an employer's own systems
-   is legitimate, and the repository is his own commit under his own account; the
-   question is whether Elite Home agreed to it being public. Worth confirming
-   before the link goes on a CV that gets sent to their competitors.
+The repository shipped with more third-party data than the first pass found. The
+React demo embedded eight real listings carrying live `ELITEHOME-` references,
+asking prices, and two colleagues by full name and mailbox — one a personal
+Gmail. Fixed at `f3830b8`: agent identities are placeholders on `example.com`,
+references are `DEMO-`, and the single commit was amended and force-pushed so
+the addresses left history rather than merely the working tree. Verified by
+re-cloning from GitHub and scanning every blob in every commit: zero
+occurrences.
+
+His own employer mailbox went too. It was his to publish, but a public repo is
+a scraping surface and the address proves nothing about the code.
+
+**Still his call:** the README names Elite Home Real Estate alongside internal
+counts — 517 leads, 1,836 listings, the named Sharjah communities. Authorised
+work on an employer's own systems is legitimate and this is his commit on his
+account. Whether the employer agreed to it being public is a question only he
+can answer, and this CV goes to their competitors.
 
 ## Repositories deliberately left off
 

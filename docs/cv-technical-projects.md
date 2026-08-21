@@ -9,10 +9,10 @@ Every claim is checkable against the repositories. Nothing is aspirational.
 
 ## 1. Header line
 
-Replace `[ GitHub — add your profile URL ]` with:
+Replace `[ LinkedIn ]  |  [ GitHub — add your profile URL ]` with:
 
 ```
-github.com/Ash01512
+linkedin.com/in/ashraf-abbas  |  github.com/Ash01512
 ```
 
 ---
@@ -54,6 +54,20 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
 - Stack: JavaScript, Cloudflare Pages, Supabase, node:test.
 - github.com/Ash01512/1099-int-check
 
+**AWS Cloud Bootcamp — Cruddur** | Guided project (ExamPro) | 2024
+
+- A containerised social application built end to end: React front end, Flask API,
+  Postgres and DynamoDB, orchestrated with Docker Compose and deployed on AWS.
+- Instrumented the services with distributed tracing, so a slow request could be
+  attributed to a named span rather than guessed at.
+- Stack: Python (Flask), React, Docker, Postgres, DynamoDB, AWS. Roughly 60
+  commits, mine. github.com/Ash01512/aws-bootcamp-cruddur-2023
+
+The label matters. This is coursework followed rather than a system designed from
+nothing, and saying so in the header line costs nothing while being caught
+pretending costs the interview. Sixty commits of real hands-on work still belong
+on a CV that is arguing a career change.
+
 ## Repositories deliberately left off
 
 Audited on 2026-08-21. Two looked like CV material and did not survive the
@@ -73,9 +87,48 @@ check. Both would have been found by any interviewer who clicked.
   CV does. If the framework is worth citing, cite it as what it is: a
   contribution to someone else's open-source project.
 
-The AWS bootcamp repositories (`aws-bootcamp-cruddur-2023`,
-`aws-hybrid-cloud-dev-2024`, `Introducing-Generative-AI-with-AWS`) are course
-material. Course completions belong under certifications, not projects.
+- **Introducing-Generative-AI-with-AWS** — all thirteen commits are by Tafadzwa
+  Mary-Anne Chigwada. None are his. It is someone else's repository sitting in
+  his account.
+- **-ExamProCo-aws-bootcamp-cruddur-2023** — empty, zero commits. The second
+  empty repository in the account, and a near-duplicate name of the bootcamp repo
+  that *is* real, which makes the real one look worse by association.
+- **aws-hybrid-cloud-dev-2024** — 135 files in a single commit. A course material
+  dump, not work.
+
+### The full account, audited 2026-08-21
+
+Ten repositories. All ten were checked — commit count, authorship, file count —
+rather than judged by name:
+
+| Repository | Verdict |
+| --- | --- |
+| `gbrain-my-personal-agent` | **On the CV.** Job Tracker Agent |
+| `1099-int-check` | **On the CV.** 2,394 lines, own test suite |
+| `aws-bootcamp-cruddur-2023` | **On the CV**, labelled as guided coursework. ~60 own commits |
+| `Ash01512` | Profile README. Not a project — but see below |
+| `-AI-Governance-Framework` | Someone else's, 24 own lines |
+| `InsideTradeView` | Empty |
+| `-ExamProCo-aws-bootcamp-cruddur-2023` | Empty |
+| `Introducing-Generative-AI-with-AWS` | Someone else's, zero own commits |
+| `aws-hybrid-cloud-dev-2024` | Single-commit course dump |
+| `playground-Scrubbing-Github-History...` | Private, a learning exercise |
+
+There is no fourth Claude-built project. The two that exist were both created in
+August 2026 and are both already listed.
+
+### The profile README contradicts the project
+
+`Ash01512/README.md` is the first thing a recruiter reads, and it describes Job
+Tracker as pulling "from two job-board APIs on a daily cron", filtering against
+"two independent search profiles", with "per-source and per-profile failure
+isolation". None of that is what was built: one board, one profile, a four-hourly
+scheduled Claude session, and the failure isolation described does not exist.
+
+It reads as a spec that was never revised after the design changed. An
+interviewer who reads the profile and then the repository finds the mismatch
+immediately, and the generous reading — stale text — is not the first one that
+occurs to them. Rewrite it to match `README.md` in this repository.
 
 ---
 

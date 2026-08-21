@@ -54,6 +54,38 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
 - Stack: JavaScript, Cloudflare Pages, Supabase, node:test.
 - github.com/Ash01512/1099-int-check
 
+**CRM Property Listing Automation** | Independent Project | 2026
+
+- Automated the bulk duplication of 1,143 property listings across a multi-vendor
+  CRM estate — Bitrix24 plus two marketplace applications — by mapping three
+  undocumented APIs and the three separate authentication schemes they each used.
+- Created every listing as a draft rather than publishing it, so 1,143
+  machine-created records reached a human for review instead of going live
+  unchecked.
+- Kept no credential on disk. The marketplace session tokens expire hourly, so the
+  scripts read a fresh one from a pasted request at run time, and each run
+  checkpoints its position so a retry resumes where it stopped rather than
+  re-creating the listings that already succeeded.
+- Stack: Python, React, Bitrix24 REST API, JWT and Bearer session auth.
+- github.com/Ash01512/crm-property-listing-automation
+
+The draft-not-publish decision is the same instinct as the job tracker's refusal
+to auto-apply, reached independently on a different problem: a machine may
+prepare work at volume, but a person signs it off. That is worth saying out loud
+in an interview.
+
+### Two things to fix in that repository before linking it
+
+1. **Three third-party email addresses are committed in the clear** —
+   two `@elitehomeuae.com` colleagues and one personal Gmail. Nobody consented to
+   having their address published, and a reviewer who greps for `@` finds them in
+   seconds. Scrub and force-push.
+2. **It names the employer and publishes internal counts** — 517 leads, 1,836
+   listings, the named communities. Authorised work on an employer's own systems
+   is legitimate, and the repository is his own commit under his own account; the
+   question is whether Elite Home agreed to it being public. Worth confirming
+   before the link goes on a CV that gets sent to their competitors.
+
 ## Repositories deliberately left off
 
 Audited on 2026-08-21. Two looked like CV material and did not survive the
@@ -84,13 +116,14 @@ check. Both would have been found by any interviewer who clicked.
 
 ### The full account, audited 2026-08-21
 
-Ten repositories. All ten were checked — commit count, authorship, file count —
+Eleven repositories. All were checked — commit count, authorship, file count —
 rather than judged by name:
 
 | Repository | Verdict |
 | --- | --- |
 | `gbrain-my-personal-agent` | **On the CV.** Job Tracker Agent |
 | `1099-int-check` | **On the CV.** 2,394 lines, own test suite |
+| `crm-property-listing-automation` | **On the CV.** 947 lines, one commit, all his |
 | `aws-bootcamp-cruddur-2023` | Real, ~60 own commits, but guided coursework — removed from the CV at his request |
 | `Ash01512` | Profile README. Not a project — but see below |
 | `-AI-Governance-Framework` | Someone else's, 24 own lines |
@@ -100,8 +133,9 @@ rather than judged by name:
 | `aws-hybrid-cloud-dev-2024` | Single-commit course dump |
 | `playground-Scrubbing-Github-History...` | Private, a learning exercise |
 
-There is no fourth Claude-built project. The two that exist were both created in
-August 2026 and are both already listed.
+Audited again on 2026-08-21 after `crm-property-listing-automation` was pushed:
+one commit, authored by him, 947 lines across eight files, no credentials
+committed. It earns its place. Nothing else in the account has changed.
 
 ### The profile README contradicts the project
 

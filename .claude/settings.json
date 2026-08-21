@@ -1,4 +1,14 @@
 {
+  "permissions": {
+    "allow": [
+      "mcp__Indeed",
+      "mcp__c671c545-238a-4c4e-ae69-1154536d79bd",
+      "mcp__Supabase",
+      "mcp__33d5fdb5-d970-465f-9af0-df046e5dd0ae",
+      "mcp__claude-code-remote",
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

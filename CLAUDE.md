@@ -134,6 +134,30 @@ does. Two quirks it works around:
   present (see below). Without a brain, brain-aware blocks stay suppressed in the
   planning skills.
 
+## Connector permissions
+
+`.claude/settings.json` carries a `permissions.allow` list naming three MCP
+servers: Indeed, Supabase, and claude-code-remote. Without it every call to them
+returns `MCP tool call requires approval` and stops — in a web or scheduled
+session there is no human at a prompt to approve it, so the request has nowhere
+to go and the run dies at its first search.
+
+Each server is listed twice, by friendly name and by installed-server UUID,
+because the harness has used both naming schemes for claude.ai connectors
+(`mcp__Indeed__search_jobs` in one session, `mcp__c671c545-…__search_jobs` in
+another). Listing both means a rename does not silently re-block the agent.
+
+The UUIDs come from `ListConnectors` (`installedServerId`). They are per
+installation, so if the connectors are ever removed and re-added, re-run
+`ListConnectors` and update them here.
+
+This must be committed rather than left in `.claude/settings.local.json`: the
+container is rebuilt from git every session, so an uncommitted local override
+does not survive to the next run.
+
+**Changing this file does not affect a session already running** — permissions
+are read at startup. A new session picks it up.
+
 ## Session bootstrap
 
 `.claude/hooks/session-start.sh` runs on SessionStart (registered in

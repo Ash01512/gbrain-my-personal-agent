@@ -1,7 +1,7 @@
 // Configuration that fails open is the failure mode that costs a WhatsApp
 // number, so the defaults get their own tests.
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import worker, { isAutopilot, isLive, limitsFrom, type Env } from '../src/index'
@@ -131,13 +131,19 @@ describe('wrangler.toml', () => {
   })
 })
 
-describe('the root wrangler.toml still belongs to the job tracker', () => {
+describe('a sibling root wrangler.toml cannot hijack this deploy', () => {
   it('does not point Cloudflare Git deploys at the outreach Worker', () => {
-    // The outreach Worker is deployed by hand on purpose: the thing that
-    // sends WhatsApp messages should go out when a human runs the command,
-    // not when a commit lands.
-    const root = readFileSync(join(ROOT, '..', 'wrangler.toml'), 'utf8')
-    expect(root).toMatch(/name\s*=\s*"job-tracker-worker"/)
+    // Only meaningful inside the monorepo, where a root wrangler.toml drives
+    // Cloudflare's Git integration for job-tracker-worker. If it ever named
+    // this Worker, a plain `git push` would redeploy the thing that sends
+    // WhatsApp messages — which is precisely what deploying by hand avoids.
+    //
+    // Absent once this folder is its own repository, and that is the safe
+    // state, so the check skips rather than failing.
+    const rootConfig = join(ROOT, '..', 'wrangler.toml')
+    if (!existsSync(rootConfig)) return
+
+    const root = readFileSync(rootConfig, 'utf8')
     expect(root).not.toMatch(/property-outreach/)
   })
 })

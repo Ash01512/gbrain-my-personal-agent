@@ -1,13 +1,18 @@
 // Worker entrypoint for property outreach.
 //
 // The shape mirrors job-tracker-worker: PostgREST behind a shared token, a
-// self-contained dashboard at /, and the agent posting drafts to an endpoint
-// that cannot approve them. `auth.ts` and `supabase.ts` are imported from that
-// Worker rather than copied — same repository, same checkout, and a divergent
-// copy of the auth check is a security bug waiting to happen.
+// self-contained dashboard at /, and an endpoint the drafting agent posts to
+// that cannot approve its own work.
+//
+// `auth.ts` and `supabase.ts` are vendored copies of that Worker's files
+// rather than cross-directory imports, so this project builds, tests and
+// deploys from its own folder with no sibling checked out — which is what lets
+// it live in its own repository. The risk of a copy is drift, and a divergent
+// copy of the auth check is a security bug, so test/vendored.test.ts fails the
+// build if the two disagree whenever both are present.
 
-import { isAuthorized } from '../../job-tracker-worker/src/auth'
-import { Supabase, SupabaseError } from '../../job-tracker-worker/src/supabase'
+import { isAuthorized } from './auth'
+import { Supabase, SupabaseError } from './supabase'
 import {
   allowanceForRun,
   audienceFilters,

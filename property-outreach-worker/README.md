@@ -270,13 +270,41 @@ and `ui.ts` reject non-http(s) URLs — listing sheets are untrusted input, and 
 `javascript:` URL rendered into an anchor would execute on this origin and could
 read the API token out of localStorage.
 
+## Moving this into its own repository
+
+This folder is self-contained: no import leaves it, `src/auth.ts` and
+`src/supabase.ts` are vendored copies rather than cross-directory imports, and
+the test suite passes from a copy with no sibling project present. Extracting it
+is therefore a copy, not a refactor:
+
+```bash
+# from the monorepo root
+git subtree split --prefix=property-outreach-worker -b outreach-only
+
+# create an EMPTY repo on github.com first — do not initialise it with a
+# README, or the first push will be rejected as a non-fast-forward
+git push git@github.com:<you>/property-outreach-worker.git outreach-only:main
+```
+
+`git subtree split` keeps the commit history for these files rather than
+flattening everything into one initial commit.
+
+Two tests notice the move and skip rather than fail: the vendored-copy drift
+check (nothing left to compare against) and the sibling-config check (no root
+`wrangler.toml`, which is the safe state). Everything else runs unchanged.
+
+Make the repository **private**. Nothing here is a secret — `wrangler.toml` is
+asserted to contain none, and a test enforces that — but this is a live outreach
+system whose configuration describes exactly how and how fast it messages
+people.
+
 ## Tests
 
 ```bash
 npm run check     # typecheck + tests
 ```
 
-188 tests. Read these first:
+192 tests. Read these first:
 
 - `test/consent.test.ts` — every way a campaign gets a number restricted.
 - `test/autopilot.test.ts` — the unattended path end to end. It proves the cron
@@ -286,3 +314,5 @@ npm run check     # typecheck + tests
 - `test/inbound.test.ts` — every way a person types "stop", and the ways that
   look like one but are not ("can I cancel the viewing?").
 - `test/optin.test.ts` — the public page, which is the only door in.
+- `test/vendored.test.ts` — proves nothing imports outside this folder, and
+  that the two vendored files have not drifted from their originals.

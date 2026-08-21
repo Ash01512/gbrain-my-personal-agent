@@ -43,10 +43,39 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
 
 **1099-INT Check** | Independent Project | 2026
 
-- Landing page for extension filers checking 1099-INT interest forms against
-  their IRS Wage and Income Transcript before the 15 October deadline.
-- Stack: Cloudflare Workers, HTML.
+- A Cloudflare Pages site and signup flow for US extension filers checking
+  1099-INT interest forms against their IRS Wage and Income Transcript before
+  the 15 October deadline.
+- Separated a rate limiter's IP hash from the mailing-list table it was stored
+  beside: a value needed for sixty seconds was being retained indefinitely next
+  to an email address. Hashes moved to their own table that purges rows older
+  than two minutes, and inserts now run through a SECURITY DEFINER function, so
+  the public key holds no direct write on the signups table at all.
+- Stack: JavaScript, Cloudflare Pages, Supabase, node:test.
 - github.com/Ash01512/1099-int-check
+
+## Repositories deliberately left off
+
+Audited on 2026-08-21. Two looked like CV material and did not survive the
+check. Both would have been found by any interviewer who clicked.
+
+- **InsideTradeView** — described on GitHub as "Agentic Financial AI Platform".
+  The repository is **empty**: no commits, no files. The description is the
+  whole project. Either build it or delete the repository; an empty repo with an
+  ambitious name is worse than no repo, because the description reads as a claim.
+- **-AI-Governance-Framework** — a real and impressive project, but not his. The
+  history carries fifteen commits from Ruslan Magana Vsevolodovna (IBM) and
+  three from this account, and those three change 24 lines: renaming the model
+  provider from IBM Granite to gpt-o4 across a README, two docs and one source
+  file. The fourth commit adds an unrelated 3,320-line YouTube-metadata Colab
+  notebook to the same repository. Listing this as a personal project invites an
+  interviewer to run `git log`, and `git log` tells a different story than the
+  CV does. If the framework is worth citing, cite it as what it is: a
+  contribution to someone else's open-source project.
+
+The AWS bootcamp repositories (`aws-bootcamp-cruddur-2023`,
+`aws-hybrid-cloud-dev-2024`, `Introducing-Generative-AI-with-AWS`) are course
+material. Course completions belong under certifications, not projects.
 
 ---
 
@@ -62,11 +91,6 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
    bullet still links the repository rather than the Worker, which is the right
    call: the Worker requires a token to show anything, so a reviewer clicking it
    would see a 401 and conclude it was broken.
-2. **1099-INT is missing its engineering-decision bullet.** The other entry has
-   one and it is the bullet that gets you asked about the work in an interview.
-   Add one line: a real choice you made and why. It is your project and your
-   decision to describe — writing it for you would put words in your mouth that
-   you would then have to defend.
-3. **Both entries must be explainable end to end without help.** That is the
+2. **Both entries must be explainable end to end without help.** That is the
    template's own bar. If any bullet above is not something you could talk
    through for five minutes, cut it.

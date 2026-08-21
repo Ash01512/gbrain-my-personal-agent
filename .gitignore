@@ -1,3 +1,13 @@
 node_modules/
 .wrangler/
 *.log
+
+# Outreach drafts pair owner names with phone numbers. Personal data, never
+# committed.
+#
+# The rule lives at the repository root deliberately. It used to live only in
+# property-outreach-worker/.gitignore, and `git rm -r` on that folder deleted
+# the rule along with it — so the very next `git add -A` staged the previously
+# ignored file as a new one and committed it. A root-level rule survives the
+# removal of any subfolder.
+outreach-drafts/

@@ -1,9 +1,0 @@
-node_modules/
-.dev.vars
-.wrangler/
-dist/
-*.log
-
-# Outreach drafts hold owner names and phone numbers from broker sheets.
-# Personal data — kept local, never committed.
-outreach-drafts/

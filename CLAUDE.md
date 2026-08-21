@@ -5,15 +5,27 @@ cover letters, and queues them for human approval. The human presses submit.
 
 - `job-tracker-worker/` — Cloudflare Worker: JSON API and approval dashboard
   over the `job-tracker` Supabase database.
-- `property-outreach-worker/` — a second Worker on the same stack, for
-  autonomous WhatsApp outreach to property owners and buyers via LetsBot. An
-  hourly cron runs campaigns with no human in the loop; a consent gate refuses
-  anything without a recorded opt-in, anything claiming a past interaction the
-  database cannot evidence, and any second message to the same person.
-  Deployed by hand, not by the Git integration.
 - `docs/designs/job-tracker-agent.md` — approved design, including why the
   agent loop runs as a scheduled Claude session rather than in the Worker.
 - The rest of this file documents the agent tooling the workspace runs on.
+
+### Tables in the Supabase project that this repo does not own
+
+The `job-tracker` Supabase project (`pnvatzrqqrnkxucogshm`) also holds
+`properties`, `contacts`, `consent_events`, `message_templates`,
+`outreach_messages` and `campaigns`. **These are not orphans — do not drop
+them.**
+
+They belong to `property-outreach-worker`, a WhatsApp outreach system that
+lived in this repository until it was split into its own project. It shares
+this database and is still the live owner of those tables; `contacts` and
+`consent_events` in particular hold real people's phone numbers and the
+evidence of their consent to be messaged, which is the record that keeps a
+WhatsApp Business number from being restricted.
+
+Nothing in this repository reads or writes them. If they are ever in the way,
+the fix is to move that project to its own Supabase project, not to delete
+data it depends on.
 
 ## gstack
 

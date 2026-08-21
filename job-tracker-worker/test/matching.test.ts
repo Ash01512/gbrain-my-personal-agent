@@ -187,3 +187,32 @@ describe('tallyDaily', () => {
     ])
   })
 })
+
+describe('the agent files each role under its search profile', () => {
+  const queued = (extra: Record<string, unknown>) =>
+    parseQueueItem({
+      company: 'Acme',
+      role: 'AI Governance Lead',
+      job_url: 'https://example.com/j/1',
+      match_score: 9,
+      match_rationale: '4 domain; 2 seniority; 2 remote-global; 0.5 comp; 1 employer-posted',
+      ...extra,
+    })
+
+  it('accepts both tracks', () => {
+    expect(queued({ track: 'ai' }).track).toBe('ai')
+    expect(queued({ track: 'facilities' }).track).toBe('facilities')
+  })
+
+  it('rejects a track nobody can filter for', () => {
+    // The CHECK in 0003 would reject it anyway, but as an opaque PostgREST 400.
+    // Failing here names the field and the allowed values.
+    expect(() => queued({ track: 'ai-ops' })).toThrow(/track must be one of/)
+  })
+
+  it('leaves the track unset rather than guessing', () => {
+    // A manual entry has no search profile behind it, and inventing one would
+    // put a role in a queue the human never chose for it.
+    expect(queued({}).track).toBeUndefined()
+  })
+})

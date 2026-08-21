@@ -14,9 +14,23 @@ export const APPLICATION_STATUSES = [
   'withdrawn',
 ] as const
 
+/**
+ * Which search profile queued a role.
+ *
+ * The two run against different rubrics, so their scores are not comparable: a
+ * 9 on the facilities rubric and a 9 on the AI rubric make different claims.
+ * Ranking them in one list quietly asserts they are the same number.
+ *
+ * Kept in step with the CHECK in `migrations/0003_add_track.sql` — a value that
+ * passes here and fails there is a 400 the user cannot act on.
+ */
+export const APPLICATION_TRACKS = ['ai', 'facilities'] as const
+
 export const COVER_LETTER_STATUSES = ['draft', 'final', 'sent'] as const
 
 export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number]
+
+export type ApplicationTrack = (typeof APPLICATION_TRACKS)[number]
 export type CoverLetterStatus = (typeof COVER_LETTER_STATUSES)[number]
 
 export interface Application {
@@ -37,6 +51,8 @@ export interface Application {
   match_score: number | null
   match_rationale: string | null
   cv_version_id: string | null
+  /** Null for rows queued before tracks existed, and for manual entries. */
+  track: ApplicationTrack | null
   created_at: string
   updated_at: string
 }
@@ -199,6 +215,7 @@ const APPLICATION_COLUMNS = [
   'match_score',
   'match_rationale',
   'cv_version_id',
+  'track',
 ]
 
 const APPLICATION_RULES: Rules = {
@@ -218,7 +235,7 @@ const APPLICATION_RULES: Rules = {
   urls: ['job_url'],
   dates: ['applied_on', 'last_contact_on'],
   numbers: { match_score: [0, 10] },
-  enums: { status: APPLICATION_STATUSES },
+  enums: { status: APPLICATION_STATUSES, track: APPLICATION_TRACKS },
 }
 
 const CV_VERSION_COLUMNS = ['label', 'content', 'file_url', 'target_role', 'is_default']

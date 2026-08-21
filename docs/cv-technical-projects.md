@@ -38,7 +38,7 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
   sent; the apply endpoint records what the user actually submits and rejects
   duplicates with a 409 so the count cannot inflate.
 - Stack: TypeScript, Cloudflare Workers, Supabase (Postgres, PostgREST), Vitest.
-  151 tests, no network required, run in CI on every push and pull request.
+  159 tests, no network required, run in CI on every push and pull request.
 - github.com/Ash01512/gbrain-my-personal-agent
 
 **1099-INT Check** | Independent Project | 2026
@@ -53,20 +53,6 @@ Replace the whole `[ FILL THIS IN — see the notes... ]` block with:
   the public key holds no direct write on the signups table at all.
 - Stack: JavaScript, Cloudflare Pages, Supabase, node:test.
 - github.com/Ash01512/1099-int-check
-
-**AWS Cloud Bootcamp — Cruddur** | Guided project (ExamPro) | 2024
-
-- A containerised social application built end to end: React front end, Flask API,
-  Postgres and DynamoDB, orchestrated with Docker Compose and deployed on AWS.
-- Instrumented the services with distributed tracing, so a slow request could be
-  attributed to a named span rather than guessed at.
-- Stack: Python (Flask), React, Docker, Postgres, DynamoDB, AWS. Roughly 60
-  commits, mine. github.com/Ash01512/aws-bootcamp-cruddur-2023
-
-The label matters. This is coursework followed rather than a system designed from
-nothing, and saying so in the header line costs nothing while being caught
-pretending costs the interview. Sixty commits of real hands-on work still belong
-on a CV that is arguing a career change.
 
 ## Repositories deliberately left off
 
@@ -105,7 +91,7 @@ rather than judged by name:
 | --- | --- |
 | `gbrain-my-personal-agent` | **On the CV.** Job Tracker Agent |
 | `1099-int-check` | **On the CV.** 2,394 lines, own test suite |
-| `aws-bootcamp-cruddur-2023` | **On the CV**, labelled as guided coursework. ~60 own commits |
+| `aws-bootcamp-cruddur-2023` | Real, ~60 own commits, but guided coursework — removed from the CV at his request |
 | `Ash01512` | Profile README. Not a project — but see below |
 | `-AI-Governance-Framework` | Someone else's, 24 own lines |
 | `InsideTradeView` | Empty |

@@ -26,19 +26,20 @@ Then, in order:
 
 ```bash
 SUPABASE_DB_URL='postgresql://...' npm run migrate   # 1. schema
-npm run check                                        # 2. typecheck + 151 tests
+npm run check                                        # 2. typecheck + 159 tests
 npm run dev                                          # 3. http://localhost:8787
 npm run deploy                                       # 4. production + smoke test
 ```
 
-1. **`npm run migrate`** applies `0000`, `0001` and `0002` in order, but checks
+1. **`npm run migrate`** applies every `NNNN_*.sql` in filename order and then
+   `0002_verify.sql` last, but checks
    first: it refuses to run if duplicate `job_url` values would abort the unique
    index, and it asks before enabling RLS, which is one-way in effect — the anon
    key then reads zero rows and gets `200 []` rather than an error. The
    connection string is in the Supabase dashboard under **Connect → Session
    pooler**; use that one, not the direct connection, which is IPv6-only on the
    free plan and simply hangs. Needs `psql`; if you would rather not install it,
-   paste the three files into the SQL editor in filename order instead.
+   paste the files into the SQL editor in filename order, running the verifier last.
    Skipping `0001` makes `POST /api/queue` and `?queue=true` fail with a raw
    PostgREST 400; skipping `0000` loses the unique index, and the agent silently
    re-queues every role on every run.
@@ -183,6 +184,10 @@ Run these in order in the Supabase SQL editor, **before the first request**.
 - `migrations/0001_add_matching.sql` — `match_score`, `match_rationale`,
   `cv_version_id`, the 0-10 check constraint, and the indexes the queue
   ordering and daily rollup read.
+- `migrations/0003_add_track.sql` — `track`, so the AI and facilities search
+  profiles queue into lists that are reviewed separately. Their rubrics score
+  different things, so one combined ranking compares numbers that do not mean
+  the same thing.
 - `migrations/0002_verify.sql` — changes nothing, raises if the live schema
   does not match what the Worker assumes.
 
@@ -359,7 +364,7 @@ npm run typecheck
 npm test
 ```
 
-151 tests. Most cover the pure helpers — schema validation, route matching,
+159 tests. Most cover the pure helpers — schema validation, route matching,
 query building, the auth comparison, the Supabase error mapping — and
 `test/worker.test.ts` drives the fetch handler itself, which is where the auth
 gate, the error mapping and the `applied_on` rules actually compose.

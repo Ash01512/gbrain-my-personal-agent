@@ -34,6 +34,7 @@ begin
       ('applications', 'match_score', 'numeric'),
       ('applications', 'match_rationale', 'text'),
       ('applications', 'cv_version_id', 'uuid'),
+      ('applications', 'track', 'text'),
       ('applications', 'created_at', 'timestamp with time zone'),
       ('applications', 'updated_at', 'timestamp with time zone'),
       ('cv_versions', 'id', 'uuid'),

@@ -103,7 +103,7 @@ describe('the docs do not claim things that are not true', () => {
       /^\| ([^|]+?) \|((?: \*{0,2}[\d.]+\*{0,2} \|){5})\s*\*{0,2}([\d.]+)\*{0,2}\s*\|([^|]*)\|$/gm,
     )]
 
-    expect(rows.length, 'the worked-examples table moved or changed shape').toBe(7)
+    expect(rows.length, 'the worked-examples table moved or changed shape').toBe(8)
 
     for (const [, posting, axesRaw, totalRaw, outcome] of rows) {
       const axes = axesRaw.split('|').filter((s) => s.trim()).map((s) => Number(s.replace(/\*/g, '')))

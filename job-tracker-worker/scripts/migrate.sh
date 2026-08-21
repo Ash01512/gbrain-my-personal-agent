@@ -7,7 +7,7 @@
 # pooler. It is a credential: pass it in the environment, do not paste it into
 # a file that git can see.
 #
-# Safe to re-run. 0001 and 0002 are idempotent by construction; 0000 is
+# Safe to re-run. Every migration except 0000 is idempotent by construction; 0000 is
 # guarded, but two of its statements are one-way, so this script checks for
 # both before touching anything and asks before proceeding.
 
@@ -34,7 +34,8 @@ psql is not installed.
   macOS:  brew install libpq && brew link --force libpq
   Debian: sudo apt-get install -y postgresql-client
 
-Or paste the three files in migrations/ into the Supabase SQL editor by hand,
+Or paste the files in migrations/ into the Supabase SQL editor by hand, applying
+_verify last,
 in filename order. This script is a convenience, not the only route.
 MSG
   exit 1
@@ -103,7 +104,15 @@ else
   echo "    RLS already on (or the tables do not exist yet)"
 fi
 
-for file in migrations/0000_init.sql migrations/0001_add_matching.sql; do
+# Every migration except the verifier, in filename order. Discovered rather
+# than listed: this loop used to name 0000 and 0001 explicitly, so adding 0003
+# left it applying two of three migrations and reporting success. A migration
+# you forgot to run fails later, somewhere else, as an opaque PostgREST 400.
+#
+# The verifier is excluded here and run last on purpose — it asserts the state
+# every other migration produces, so running it in filename order would check
+# the schema halfway through building it.
+for file in $(ls migrations/[0-9]*.sql | grep -v '_verify\.sql$'); do
   echo
   echo "==> $file"
   psql_run -f "$file"

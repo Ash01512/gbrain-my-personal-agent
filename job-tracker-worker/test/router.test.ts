@@ -74,3 +74,37 @@ describe('listOptionsFromSearch', () => {
     expect(opts('offset=-5').offset).toBe(0)
   })
 })
+
+describe('the two search profiles stay separate', () => {
+  // The AI and facilities rubrics score different things, so a 9 in one is not
+  // a 9 in the other. Ranking them in one list asserts an equivalence that does
+  // not hold — the filter is what stops the queue doing that silently.
+  const opts = (qs: string) => listOptionsFromSearch(new URLSearchParams(qs))
+
+  it('narrows to a single track', () => {
+    expect(opts('track=ai').filters.track).toBe('eq.ai')
+    expect(opts('track=facilities').filters.track).toBe('eq.facilities')
+  })
+
+  it('reaches rows queued before tracks existed', () => {
+    // `eq.null` matches the four-character string "null" in PostgREST, not SQL
+    // NULL, so it would return nothing and read as "no untracked rows".
+    expect(opts('track=none').filters.track).toBe('is.null')
+  })
+
+  it('shows both tracks when none is asked for', () => {
+    expect(opts('').filters.track).toBeUndefined()
+    expect(opts('queue=true').filters.track).toBeUndefined()
+  })
+
+  it('combines with the queue view rather than replacing it', () => {
+    const queue = opts('queue=true&track=ai')
+    expect(queue.filters).toMatchObject({ status: 'eq.saved', track: 'eq.ai' })
+    expect(queue.order).toBe('match_score.desc.nullslast,created_at.desc')
+  })
+
+  it('ignores track on tables that do not have the column', () => {
+    const cv = listOptionsFromSearch(new URLSearchParams('track=ai'), 'cv_versions')
+    expect(cv.filters.track).toBeUndefined()
+  })
+})

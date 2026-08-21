@@ -119,6 +119,13 @@ export function listOptionsFromSearch(
   const company = isApplications ? search.get('company') : null
   if (company) filters.company = `ilike.*${company}*`
 
+  // ?track=ai or ?track=facilities narrows to one search profile. The two score
+  // against different rubrics, so a combined ranking compares numbers that do
+  // not mean the same thing. ?track=none reaches rows queued before tracks
+  // existed — `eq.` cannot express IS NULL, so PostgREST needs `is.null`.
+  const track = isApplications ? search.get('track') : null
+  if (track) filters.track = track === 'none' ? 'is.null' : `eq.${track}`
+
   // Free-text across the two columns worth searching.
   const q = isApplications ? search.get('q') : null
   if (q) filters.or = `(company.ilike.${quoted(`*${q}*`)},role.ilike.${quoted(`*${q}*`)})`

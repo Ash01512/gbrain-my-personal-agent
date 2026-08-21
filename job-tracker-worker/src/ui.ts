@@ -232,6 +232,13 @@ export function dashboardHtml(): string {
         <option value="">All statuses</option>
         ${STATUSES.map((s) => `<option value="${s}">${s}</option>`).join('')}
       </select>
+      <label class="visually-hidden" for="track">Filter by track</label>
+      <select id="track">
+        <option value="">Both tracks</option>
+        <option value="ai">AI &amp; data roles</option>
+        <option value="facilities">Facilities leadership</option>
+        <option value="none">Untracked</option>
+      </select>
       <label class="visually-hidden" for="sort">Sort order</label>
       <select id="sort">
         <option value="queue">Unsent, best fit first</option>
@@ -357,7 +364,7 @@ async function loadStats() {
 function emptyRow() {
   // Four different situations used to share one "Nothing in the queue", so a
   // user who forgot a filter concluded the agent was broken.
-  const filtered = $('q').value.trim() || $('filter').value;
+  const filtered = $('q').value.trim() || $('filter').value || $('track').value;
   if (filtered) {
     return '<tr><td colspan="5" class="muted">No matches for these filters. ' +
       '<button class="link" id="clear-filters">Clear filters</button></td></tr>';
@@ -409,6 +416,7 @@ async function loadRows() {
   const params = new URLSearchParams();
   if ($('q').value.trim()) params.set('q', $('q').value.trim());
   if ($('filter').value) params.set('status', $('filter').value);
+  if ($('track').value) params.set('track', $('track').value);
   if ($('sort').value === 'queue') params.set('queue', 'true');
   const { data } = await api('/applications?' + params.toString());
   $('rows').innerHTML = data.length ? data.map(rowHtml).join('') : emptyRow();
@@ -445,6 +453,7 @@ $('save-token').onclick = () => {
 $('refresh').onclick = refresh;
 $('q').onkeydown = (e) => { if (e.key === 'Enter') refresh(); };
 $('filter').onchange = refresh;
+$('track').onchange = refresh;
 $('sort').onchange = refresh;
 
 $('add').onsubmit = async (e) => {
@@ -485,7 +494,7 @@ async function undoApply(id) {
 
 document.addEventListener('click', async (e) => {
   if (e.target.id === 'clear-filters') {
-    $('q').value = ''; $('filter').value = '';
+    $('q').value = ''; $('filter').value = ''; $('track').value = '';
     refresh();
     return;
   }

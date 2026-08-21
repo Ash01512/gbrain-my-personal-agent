@@ -39,37 +39,58 @@ mark anything as applied.
 
 ## Search tracks
 
-Two tiers, because the countries are not interchangeable — see the eligibility
-axis below. The split is what keeps the queue from filling with roles that
-cannot hire him.
+Two dimensions, and they are independent: **which profile** a role belongs to,
+and **which tier** its country falls in.
 
-**Tier A — no sponsorship needed.** UAE (`AE`) and Saudi Arabia (`SA`). Golden
-Visa means he can start in the UAE immediately, and GCC mobility makes KSA a
-short step. Run every track:
+### The two profiles
 
-| Track | Query |
+Separate searches producing separate queues, written to `track` on each queued
+row and filterable in the dashboard. Not cosmetic: the rubrics score different
+things, so a 9 on one is not a 9 on the other. Ranking them in one list asserts
+an equivalence that does not hold, and whichever list is stronger on any given
+day buries the other regardless of which roles he actually wants.
+
+| Profile | `track` | What it is |
+| --- | --- | --- |
+| **AI & data** | `ai` | The career he is moving toward. Slower, and the reason for the CV rewrite |
+| **Facilities leadership** | `facilities` | The career he already has. Higher hit rate, faster offers, pays now |
+
+Run both every cycle. Neither is a fallback for the other. They answer different
+questions, and which one to act on is a decision he makes looking at two lists —
+not one a combined ranking makes for him.
+
+### Tier A — no sponsorship needed
+
+UAE (`AE`), Saudi Arabia (`SA`) and Qatar (`QA`). The Golden Visa means he can
+start in the UAE immediately, and GCC mobility makes KSA and Qatar short steps.
+Run both profiles:
+
+| Profile | Query |
 | --- | --- |
-| AI in operations | `AI operations data` |
-| Applied AI / asset | `machine learning predictive maintenance` |
-| AI governance | `AI governance risk compliance` |
-| AI delivery | `AI solutions engineer` |
-| Asset data | `asset management data analyst` |
-| Operations data | `operations data analyst` |
-| Facilities leadership | `head of facilities management` |
-| Energy analytics | `energy manager analytics` |
+| `ai` | `AI operations data` |
+| `ai` | `machine learning predictive maintenance` |
+| `ai` | `AI governance risk compliance` |
+| `ai` | `AI solutions engineer` |
+| `facilities` | `head of facilities management` |
+| `facilities` | `facilities manager` |
+| `facilities` | `asset management data analyst` |
+| `facilities` | `energy manager analytics` |
 
-Locations: Dubai, Abu Dhabi, Sharjah, Riyadh. Plus `remote` in each country.
+Locations: Dubai, Abu Dhabi, Sharjah, Riyadh, Doha. Plus `remote` in each.
 
-**Tier B — sponsorship required.** US, Canada (`CA`), Australia (`AU`), UK
-(`GB`), Ireland (`IE`), Singapore (`SG`). Only the AI tracks, because a
-facilities role will never clear the sponsorship bar — no employer sponsors a
-visa for a skill available locally. Run:
+### Tier B — sponsorship required
 
-| Track | Query |
+US, Canada (`CA`), Australia (`AU`), UK (`GB`), Ireland (`IE`) and Singapore
+(`SG`). **`ai` profile only.** No employer sponsors a visa for facilities
+management: the skill is available locally in every one of these markets, which
+is the basis on which sponsorship gets refused. Running the facilities profile
+here would spend API calls generating rejections.
+
+| Profile | Query |
 | --- | --- |
-| AI in operations | `AI operations visa sponsorship` |
-| AI governance | `AI governance risk` |
-| Applied AI / asset | `machine learning asset management` |
+| `ai` | `AI operations visa sponsorship` |
+| `ai` | `AI governance risk` |
+| `ai` | `machine learning asset management` |
 
 Locations: `remote` first in every Tier B country — a remote-global role is the
 one shape that sidesteps sponsorship entirely. Then the main hub only: New York,
@@ -95,6 +116,24 @@ GenAI certificate make him credible for applying AI to a domain he knows cold.
 They do not make him a competitive ML engineer, and applying as one converts at
 zero while costing the same effort.
 
+**Domain fit for the `facilities` profile (0–4)** — a different question, so a
+different table. Here twelve years is the asset, not the thing being argued
+around.
+
+| Score | Anchor |
+| --- | --- |
+| 4 | Head of Facilities / FM Director owning budget, vendors and multi-site scope — his current job, one rung up |
+| 3 | Facilities or asset management leadership at manager level, or an FM role where analytics, CMMS/CAFM data or KPI reporting is a named responsibility |
+| 2 | Facilities or operations management with no data component and narrower scope |
+| 1 | Adjacent engineering — project, mechanical, MEP — with no asset or leadership angle |
+| 0 | Unrelated |
+
+The two tables deliberately disagree about the same posting. A Head of
+Facilities role is a **4** on the facilities rubric and a **2** on the AI one,
+and both are correct: it is an excellent instance of the job he has and a poor
+instance of the job he wants. That disagreement is the reason the scores are
+never merged into one list.
+
 **Seniority (0–2)**
 
 | Score | Anchor |
@@ -107,7 +146,7 @@ zero while costing the same effort.
 
 Scored on *who can actually hire him*, not on where the office is. He is a
 Sudanese national holding a UAE Golden Visa: no permission needed in the UAE,
-and needing sponsorship in six of the eight target countries. A rubric that
+and needing sponsorship in six of the nine target countries. A rubric that
 scored London the same as Dubai would fill the queue with roles that reject him
 at the work-authorisation question, which is a slower and more demoralising way
 of finding out.
@@ -115,20 +154,21 @@ of finding out.
 | Score | Anchor |
 | --- | --- |
 | 2 | UAE — Golden Visa, available immediately, no employer cost. Or remote-global with no work-location restriction |
-| 1.5 | KSA or elsewhere in the GCC — routine sponsorship, short relocation |
+| 1.5 | KSA, Qatar or elsewhere in the GCC — routine sponsorship, short relocation |
 | 1 | US, Canada, Australia, UK, Ireland or Singapore where the posting **explicitly** offers visa sponsorship, or the employer is a known sponsor |
 | 0.5 | Those countries, sponsorship not mentioned either way — a real but long shot |
 | 0 | States "must have existing right to work", "no sponsorship", or a security clearance requiring citizenship — **and this caps the total at 0** |
 
 **Sponsorship floor: a Tier B role scoring 0.5 here is only queued if it scores
-4 on domain fit.** A long shot is worth taking when the match is exceptional and
+4 on domain fit.** This applies to the `ai` profile, which is the only one that
+runs in Tier B at all. A long shot is worth taking when the match is exceptional and
 not otherwise. Without this the queue becomes fifty postings from six countries
 that will never answer, and the daily count stops meaning anything.
 
 **Compensation (0–1)**
 
 The floor is AED 50k/month. Converting every currency to a monthly AED figure is
-the only way eight countries compare, and gross-of-tax is the honest basis: UAE
+the only way nine countries compare, and gross-of-tax is the honest basis: UAE
 pay is untaxed, so a nominally larger UK or Canadian salary can be a pay cut.
 
 | Score | Anchor |
@@ -175,12 +215,16 @@ for facilities role."
 Illustrative, not real postings — they exist so the rubric can be argued with
 before it is trusted, and so a reviewer can see what the agent actually sends.
 
+Domain is scored on whichever profile's table applies — the Doha row is a 4 on
+the facilities rubric and would be a 2 on the AI one.
+
 | Posting | Domain | Sen | Loc | Comp | Sig | Total | Outcome |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | AI Governance Lead, bank, remote-global, band stated, employer-posted | 4 | 2 | 2 | 1 | 1 | **10** | queue + draft letter |
 | Predictive Maintenance AI Lead, aviation group, Dubai, employer-posted | 4 | 2 | 2 | 0.5 | 1 | **9.5** | queue + draft letter |
 | Applied AI Engineer, energy, London, sponsorship offered, band stated | 4 | 1 | 1 | 1 | 1 | **8.0** | queue + draft letter |
 | AI Solutions Engineer, consultancy, Riyadh, employer-posted | 3 | 2 | 1.5 | 0.5 | 1 | **8.0** | queue + draft letter |
+| Head of Facilities, hospitality group, Doha, employer-posted | 4 | 2 | 1.5 | 0.5 | 1 | **9.0** | `facilities` — queue + draft letter |
 | AI Program Manager, logistics, Toronto, sponsorship not mentioned | 3 | 2 | 0.5 | 0.5 | 1 | 7.0 | **not queued — sponsorship floor** |
 | Mechanical Site Engineer, Dubai, employer-posted | **1** | 2 | 2 | 0.5 | 1 | 6.5 | **not queued — domain floor** |
 | ML Research Engineer, Singapore, "must hold existing right to work" | 1 | 1 | **0** | 1 | 1 | **0** | **not queued — hard zero** |
@@ -206,6 +250,7 @@ For the first row, the exact `POST /api/queue` body:
   "job_url": "https://www.indeed.com/viewjob?jk=abc123",
   "source": "indeed",
   "match_score": 10,
+  "track": "ai",
   "match_rationale": "4 domain — owns model risk and assurance for deployed AI, and CRISC plus 12 years of regulated operations is the exact pairing asked for; 2 seniority — Lead, owns the control framework; 2 remote-global, no work-location restriction so no sponsorship question; 1 comp band midpoint clears the floor; 1 employer-posted with full scope"
 }
 ```
@@ -236,7 +281,7 @@ treat it accordingly: environment settings only, never a commit, never a prompt.
 ## Schedule
 
 Every four hours — six runs a day, so a posting is seen within four hours of
-going up. Eight countries is what makes round-the-clock cadence earn its keep
+going up. Nine countries is what makes round-the-clock cadence earn its keep
 rather than just sound thorough: Singapore posts while Dubai sleeps, and the US
 west coast posts while both do. There is no hour of the day when every target
 market is quiet, so there is no run that is reliably wasted.
@@ -266,12 +311,15 @@ GET $JOB_TRACKER_URL/api/health. If it is not 200, report the response and stop
 Then, following docs/agent-loop.md in the repository for the search tracks and
 the scoring rubric:
 
-1. Search Indeed across the tracks in that document, both tiers. Tier A is
-   country_code AE (Dubai, Abu Dhabi, Sharjah) and SA (Riyadh), plus remote in
-   each. Tier B is US, CA, AU, GB, IE and SG — run remote first in every one of
-   them, then the single named hub city, and only the AI tracks.
+1. Search Indeed across both profiles and both tiers. Tier A is country_code AE
+   (Dubai, Abu Dhabi, Sharjah), SA (Riyadh) and QA (Doha), plus remote in each,
+   and runs the ai and facilities profiles both. Tier B is US, CA, AU, GB, IE
+   and SG — remote first in every one, then the single named hub city, and the
+   ai profile only.
 2. For each plausible result, call get_job_details and score it 0-10 against the
-   rubric. Discard anything under 6 without comment. Apply both floors: domain
+   rubric for that profile — the two domain-fit tables are different questions
+   and a role is scored on the one its profile uses. Discard anything under 6
+   without comment. Apply both floors: domain
    fit under 2 is never queued whatever it totals, and a Tier B role with no
    stated sponsorship is only queued at domain fit 4. Read the posting for the
    work-authorisation line specifically — "must have existing right to work" is
@@ -282,8 +330,10 @@ the scoring rubric:
    experience that meets it.
 4. POST each survivor to $JOB_TRACKER_URL/api/queue with an Authorization:
    Bearer $JOB_TRACKER_TOKEN header and a JSON body of company, role, location,
-   job_url, source, match_score, match_rationale. The rationale is the arithmetic
-   of the score, not a summary of the posting. Cap at 10 per run, best first.
+   job_url, source, match_score, match_rationale, and track — "ai" or
+   "facilities", whichever profile found it. The rationale is the arithmetic of
+   the score, not a summary of the posting. Cap at 10 per run per track, best
+   first, so a strong day on one profile cannot crowd out the other.
    A 409 means the role is already queued — count it and move on, it is the
    dedupe working.
 5. Report one short paragraph: how many were searched, scored, queued and

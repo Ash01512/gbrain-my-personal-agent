@@ -9,6 +9,24 @@ cover letters, and queues them for human approval. The human presses submit.
   agent loop runs as a scheduled Claude session rather than in the Worker.
 - The rest of this file documents the agent tooling the workspace runs on.
 
+### Tables in the Supabase project that this repo does not own
+
+The `job-tracker` Supabase project (`pnvatzrqqrnkxucogshm`) also holds
+`properties`, `contacts`, `consent_events`, `message_templates`,
+`outreach_messages` and `campaigns`. **These are not orphans — do not drop
+them.**
+
+They belong to `property-outreach-worker`, a WhatsApp outreach system that
+lived in this repository until it was split into its own project. It shares
+this database and is still the live owner of those tables; `contacts` and
+`consent_events` in particular hold real people's phone numbers and the
+evidence of their consent to be messaged, which is the record that keeps a
+WhatsApp Business number from being restricted.
+
+Nothing in this repository reads or writes them. If they are ever in the way,
+the fix is to move that project to its own Supabase project, not to delete
+data it depends on.
+
 ## gstack
 
 [gstack](https://github.com/garrytan/gstack) is installed at `~/.claude/skills/gstack` and

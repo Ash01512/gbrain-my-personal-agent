@@ -1,5 +1,20 @@
 # CV — filled fields
 
+## Repositioned 2026-08-21 for AI and automation roles
+
+The headline was `Operations & Asset Data | Predictive Maintenance | Facilities
+Engineering`, which reads facilities-first — so an AI screener stopped before it
+reached the projects. It is now `AI & Automation Engineering | Operations & Asset
+Data | Facilities Leadership`, and the profile leads with the four shipped
+projects rather than the twelve years. A new `AI & Automation` row heads AREAS OF
+FOCUS, naming Claude Code explicitly, because employers are now advertising for
+it by name.
+
+The twelve years stay, and stay early — they are the reason he is credible for
+applying AI to operations rather than competing with ML engineers. Four projects
+fit two pages by collapsing certifications and eligibility onto single lines and
+cutting the 2012-14 role to one bullet.
+
 The two blanks in `Ashraf_Abbas_CV_Data_Operations.pdf`, filled. Paste these
 into the existing document so its formatting is preserved.
 
